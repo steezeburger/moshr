@@ -20,7 +20,6 @@ class MoshrApp {
 
     initializeElements() {
         this.newProjectBtn = document.getElementById('newProjectBtn');
-        this.migrateBtn = document.getElementById('migrateBtn');
         this.fileControls = document.getElementById('fileControls');
         this.addFileBtn = document.getElementById('addFileBtn');
         this.projectsGrid = document.getElementById('projectsGrid');
@@ -67,7 +66,6 @@ class MoshrApp {
 
     setupEventListeners() {
         this.newProjectBtn.addEventListener('click', this.createNewProject.bind(this));
-        this.migrateBtn.addEventListener('click', this.migrateOldFiles.bind(this));
         this.addFileBtn.addEventListener('click', this.toggleUploadSection.bind(this));
         
         this.uploadArea.addEventListener('click', () => this.fileInput.click());
@@ -989,36 +987,6 @@ class MoshrApp {
         }
     }
 
-    async migrateOldFiles() {
-        if (!confirm('This will migrate your old uploads and moshes to the new project system. Continue?')) {
-            return;
-        }
-
-        try {
-            this.updateProgress('Migrating old files...', 50);
-            
-            const response = await fetch('/api/migrate', {
-                method: 'POST'
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                alert(`Migration completed! Created ${data.migrated_projects?.length || 0} projects.`);
-                this.loadProjects(); // Refresh project list
-                this.updateProgress('Migration completed', 100);
-                
-                setTimeout(() => {
-                    this.progress.style.display = 'none';
-                }, 2000);
-            } else {
-                throw new Error('Migration failed');
-            }
-        } catch (error) {
-            console.error('Migration error:', error);
-            alert('Migration failed: ' + error.message);
-            this.updateProgress('Migration failed', 0);
-        }
-    }
 
     updateProgress(text, percentage) {
         this.progress.style.display = 'block';
