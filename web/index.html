@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moshr - Video Datamoshing Tool</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Moshr</h1>
+            <p>Video Datamoshing Tool</p>
+        </header>
+
+        <main>
+            <section class="project-section">
+                <h3>Project Management</h3>
+                <div class="project-controls">
+                    <button id="newProjectBtn">Create New Project</button>
+                    <button id="loadProjectBtn">Load Existing Project</button>
+                    <button id="migrateBtn">Migrate Old Files</button>
+                </div>
+                <div id="projectSelector" style="display: none;">
+                    <select id="projectList">
+                        <option value="">Select a project...</option>
+                    </select>
+                    <button id="selectProjectBtn">Select Project</button>
+                </div>
+                <div id="currentProject" style="display: none;">
+                    <h4>Current Project: <span id="currentProjectName"></span></h4>
+                </div>
+            </section>
+
+            <section class="upload-section" id="uploadSection" style="display: none;">
+                <div class="upload-area" id="uploadArea">
+                    <div class="upload-content">
+                        <p>Drop video files here or click to browse</p>
+                        <input type="file" id="fileInput" accept="video/*" multiple>
+                    </div>
+                </div>
+            </section>
+
+            <section class="video-info" id="videoInfo" style="display: none;">
+                <h3>Video Information</h3>
+                <div id="videoDetails"></div>
+            </section>
+
+            <section class="timeline-section" id="timelineSection" style="display: none;">
+                <h3>Video Timeline & Scene Detection</h3>
+                
+                <div class="timeline-controls">
+                    <button id="generateTimelineBtn">Generate Timeline</button>
+                    <button id="detectScenesBtn">Detect Scenes</button>
+                    <button id="keyFramesBtn">Show Key Frames</button>
+                </div>
+
+                <div class="scenes-list" id="scenesList" style="display: none;">
+                    <h4>Detected Scenes</h4>
+                    <div id="scenesContainer"></div>
+                </div>
+
+                <div class="timeline-container" id="timelineContainer" style="display: none;">
+                    <div class="timeline-header">
+                        <span id="timelineInfo">Select frames to create clips</span>
+                        <div class="selection-info">
+                            <span id="selectionStart">Start: --</span>
+                            <span id="selectionEnd">End: --</span>
+                            <span id="selectionDuration">Duration: --</span>
+                        </div>
+                    </div>
+                    <div class="timeline-frames" id="timelineFrames"></div>
+                    <div class="timeline-controls-bottom">
+                        <button id="clearSelectionBtn">Clear Selection</button>
+                        <button id="createClipBtn" disabled>Create Clip from Selection</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="controls" id="controls" style="display: none;">
+                <h3>Processing Controls</h3>
+                
+                <div class="control-group">
+                    <label for="effectType">Effect Type:</label>
+                    <select id="effectType">
+                        <option value="datamosh">Datamosh</option>
+                        <option value="glitch">Glitch</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="intensity">Intensity:</label>
+                    <input type="range" id="intensity" min="0" max="1" step="0.1" value="0.5">
+                    <span id="intensityValue">0.5</span>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="batchMode">
+                        Generate multiple variations
+                    </label>
+                </div>
+
+                <div class="control-group">
+                    <label for="clipSource">Mosh Source:</label>
+                    <select id="clipSource">
+                        <option value="full">Full Video</option>
+                        <option value="clip">Selected Clip</option>
+                    </select>
+                </div>
+
+                <div class="buttons">
+                    <button id="convertBtn">Convert to AVI</button>
+                    <button id="moshBtn" disabled>Generate Mosh</button>
+                </div>
+            </section>
+
+            <section class="progress" id="progress" style="display: none;">
+                <h3>Processing Progress</h3>
+                <div class="progress-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div id="progressText">Ready</div>
+            </section>
+
+            <section class="clips-library" id="clipsLibrary" style="display: none;">
+                <h3>Created Clips</h3>
+                <div class="clips-grid" id="clipsGrid"></div>
+            </section>
+
+            <section class="mosh-history" id="moshHistory" style="display: none;">
+                <h3>Mosh History</h3>
+                <div class="history-container" id="historyContainer">
+                    <div class="history-info">
+                        <p>Your generated moshes will appear here. Each new mosh will be added to your collection.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section class="results" id="results" style="display: none;">
+                <h3>Latest Results</h3>
+                <div class="preview-grid" id="previewGrid"></div>
+            </section>
+
+            <section class="jobs" id="jobs" style="display: none;">
+                <h3>Processing Jobs</h3>
+                <div id="jobsList"></div>
+            </section>
+        </main>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

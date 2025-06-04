@@ -1,0 +1,9 @@
+# ai
+.claude/settings.local.json
+
+# IDEs
+.idea/
+
+# user files
+projects/*
+!projects/.gitkeep
