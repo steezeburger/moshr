@@ -5,7 +5,6 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 )
 
@@ -59,53 +58,39 @@ func (c *CorruptionEffect) applyByteCorruption(inputPath, outputPath string, int
 }
 
 func (c *CorruptionEffect) applyChannelShift(inputPath, outputPath string, intensity float64) error {
-	tempDir := filepath.Dir(outputPath)
-	tempBase := filepath.Join(tempDir, "temp_channel_")
+	shiftAmount := int(intensity * 10) + 2 // 2-12 pixel shift
 	
-	// Extract frames
-	extractCmd := exec.Command("ffmpeg", "-i", inputPath, "-y", tempBase+"%04d.png")
-	if err := extractCmd.Run(); err != nil {
-		return fmt.Errorf("failed to extract frames: %v", err)
-	}
-	
-	// Process frames with channel shifting
-	shiftAmount := int(intensity * 20) // Max 20 pixel shift
-	
-	// Use ffmpeg filter to create RGB channel separation effect
-	filterComplex := fmt.Sprintf("[0:v]split=3[r][g][b];"+
-		"[r]lutrgb=g=0:b=0,crop=iw-%d:ih:0:0[r_shifted];"+
-		"[g]lutrgb=r=0:b=0,crop=iw-%d:ih:%d:0[g_shifted];"+
-		"[b]lutrgb=r=0:g=0,crop=iw-%d:ih:%d:0[b_shifted];"+
-		"[r_shifted][g_shifted]blend=all_mode=addition[rg];"+
-		"[rg][b_shifted]blend=all_mode=addition", 
-		shiftAmount, shiftAmount, shiftAmount/2, shiftAmount, shiftAmount)
+	filterComplex := fmt.Sprintf("rgbashift=rh=%d:gh=-%d", shiftAmount, shiftAmount/2)
 	
 	cmd := exec.Command("ffmpeg", "-i", inputPath, "-vf", filterComplex, "-y", outputPath)
 	return cmd.Run()
 }
 
 func (c *CorruptionEffect) applyPixelSort(inputPath, outputPath string, intensity float64) error {
-	// Use ffmpeg with custom pixel sorting effect
-	threshold := int(intensity * 100) // Sorting threshold
+	// Use FFmpeg's shuffleplanes and geq for actual pixel manipulation
+	threshold := int(intensity * 128) + 32 // 32-160 brightness threshold
 	
-	filterComplex := fmt.Sprintf("format=rgb24,"+
-		"geq=r='if(gte(r(X\\,Y)\\,%d)\\,r(X\\,Y)\\,r(X\\,mod(Y+%d\\,H)))':"+
-		"g='if(gte(g(X\\,Y)\\,%d)\\,g(X\\,Y)\\,g(X\\,mod(Y+%d\\,H)))':"+
-		"b='if(gte(b(X\\,Y)\\,%d)\\,b(X\\,Y)\\,b(X\\,mod(Y+%d\\,H)))'",
-		threshold, c.rng.Intn(10)+1, threshold, c.rng.Intn(10)+1, threshold, c.rng.Intn(10)+1)
+	// Create a scrambling effect that sorts pixels based on brightness
+	filterComplex := fmt.Sprintf("format=rgb24,geq="+
+		"r='if(gte((r(X,Y)+g(X,Y)+b(X,Y))/3,%d),r(X+%d,Y),r(X,Y))':"+
+		"g='if(gte((r(X,Y)+g(X,Y)+b(X,Y))/3,%d),g(X-%d,Y),g(X,Y))':"+
+		"b='if(gte((r(X,Y)+g(X,Y)+b(X,Y))/3,%d),b(X,Y+%d),b(X,Y))'", 
+		threshold, c.rng.Intn(20)+5, threshold, c.rng.Intn(20)+5, threshold, c.rng.Intn(10)+2)
 	
 	cmd := exec.Command("ffmpeg", "-i", inputPath, "-vf", filterComplex, "-y", outputPath)
 	return cmd.Run()
 }
 
 func (c *CorruptionEffect) applyScanlineDisplace(inputPath, outputPath string, intensity float64) error {
-	displacement := int(intensity * 50) // Max 50 pixel displacement
+	displacement := int(intensity * 50) + 10 // 10-60 pixel displacement
+	frequency := intensity * 0.1 + 0.05 // Wave frequency
 	
-	// Create displacement map
-	filterComplex := fmt.Sprintf("split[main][displace];"+
-		"[displace]geq=r='sin(Y*0.1)*%d':g='cos(Y*0.1)*%d':b=0,"+
-		"scale=iw:ih[dispmap];"+
-		"[main][dispmap]displace", displacement, displacement)
+	// Create actual scanline displacement using geq
+	filterComplex := fmt.Sprintf("geq="+
+		"r='r(X+%d*sin(Y*%f),Y)':"+
+		"g='g(X-%d*cos(Y*%f),Y)':"+
+		"b='b(X+%d*sin(Y*%f+1),Y)'", 
+		displacement, frequency, displacement/2, frequency, displacement/3, frequency)
 	
 	cmd := exec.Command("ffmpeg", "-i", inputPath, "-vf", filterComplex, "-y", outputPath)
 	return cmd.Run()
