@@ -104,6 +104,26 @@ func (bp *BatchProcessor) processJob(job *Job) {
 		fmt.Printf("Using glitch effect\n")
 		effect := effects.NewGlitchEffect()
 		err = effect.Apply(job.InputPath, outputPath, job.Params.Intensity)
+	case "corruption":
+		fmt.Printf("Using corruption effect\n")
+		effect := effects.NewCorruptionEffect()
+		err = effect.Apply(job.InputPath, outputPath, job.Params.Intensity)
+	case "byte_corruption":
+		fmt.Printf("Using byte corruption effect\n")
+		effect := effects.NewCorruptionEffect()
+		err = effect.ApplyByteCorruption(job.InputPath, outputPath, job.Params.Intensity)
+	case "channel_shift":
+		fmt.Printf("Using channel shift effect\n")
+		effect := effects.NewCorruptionEffect()
+		err = effect.ApplyChannelShift(job.InputPath, outputPath, job.Params.Intensity)
+	case "pixel_sort":
+		fmt.Printf("Using pixel sort effect\n")
+		effect := effects.NewCorruptionEffect()
+		err = effect.ApplyPixelSort(job.InputPath, outputPath, job.Params.Intensity)
+	case "scanline_displace":
+		fmt.Printf("Using scanline displacement effect\n")
+		effect := effects.NewCorruptionEffect()
+		err = effect.ApplyScanlineDisplace(job.InputPath, outputPath, job.Params.Intensity)
 	default:
 		fmt.Printf("Using default mosher\n")
 		mosher := video.NewMosher()

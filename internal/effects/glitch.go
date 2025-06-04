@@ -28,16 +28,13 @@ func (g *GlitchEffect) generateRandomParams(intensity float64) video.MoshParams 
 		Intensity: intensity,
 	}
 
-	iframeChance := intensity * 0.7
+	iframeChance := intensity * 0.9
 	if g.rng.Float64() < iframeChance {
 		params.IFrameRemoval = true
 	}
 
-	pframeChance := intensity * 0.8
-	if g.rng.Float64() < pframeChance {
-		params.PFrameDuplication = true
-		params.DuplicationCount = g.rng.Intn(int(intensity*30)) + 8
-	}
+	params.PFrameDuplication = true
+	params.DuplicationCount = g.rng.Intn(int(intensity*15)) + 5
 
 	return params
 }

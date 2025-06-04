@@ -594,13 +594,44 @@ class MoshrApp {
         this.moshBtn.disabled = false;
     }
 
-    deleteClip(index) {
-        this.createdClips.splice(index, 1);
-        this.displayClips();
-        
-        if (this.selectedClip === this.createdClips[index]) {
-            this.selectedClip = null;
-            this.clipSource.value = 'full';
+    async deleteClip(index) {
+        if (!this.currentProjectData) {
+            alert('No project selected');
+            return;
+        }
+
+        const clip = this.createdClips[index];
+        if (!clip || !clip.id) {
+            alert('Invalid clip selected');
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete the clip "${clip.name}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/clips/${clip.id}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                this.createdClips.splice(index, 1);
+                this.displayClips();
+                
+                if (this.selectedClip === clip) {
+                    this.selectedClip = null;
+                    this.clipSource.value = 'full';
+                }
+                
+                console.log('Clip deleted successfully');
+            } else {
+                const error = await response.text();
+                throw new Error(error || 'Failed to delete clip');
+            }
+        } catch (error) {
+            console.error('Error deleting clip:', error);
+            alert('Failed to delete clip: ' + error.message);
         }
     }
 
@@ -649,6 +680,17 @@ class MoshrApp {
             
             if (status === 'completed') {
                 this.loadResults();
+                
+                // Check if all jobs are completed and hide main progress
+                const allCompleted = Array.from(this.jobsMap.values()).every(job => 
+                    job.status === 'completed' || job.status === 'failed'
+                );
+                
+                if (allCompleted) {
+                    setTimeout(() => {
+                        this.progress.style.display = 'none';
+                    }, 2000);
+                }
             }
         }
     }

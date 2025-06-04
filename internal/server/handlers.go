@@ -70,6 +70,7 @@ func (s *Server) SetupRoutes() *gin.Engine {
 		api.POST("/projects/:id/scenes", s.handleDetectScenes)
 		api.POST("/projects/:id/timeline", s.handleGenerateTimeline)
 		api.POST("/projects/:id/clip", s.handleExtractClip)
+		api.DELETE("/projects/:id/clips/:clipId", s.handleDeleteClip)
 		api.GET("/projects/:id/frame/:filename/:timestamp", s.handleGetFrame)
 		api.POST("/projects/:id/convert-mosh/:filename", s.handleConvertMosh)
 		api.POST("/migrate", s.handleMigrateOldFiles)
@@ -513,6 +514,54 @@ func (s *Server) handleExtractClip(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"output_path": outputPath,
 		"clip_name":   req.OutputName,
+	})
+}
+
+func (s *Server) handleDeleteClip(c *gin.Context) {
+	projectID := c.Param("id")
+	clipID := c.Param("clipId")
+	
+
+	clips, err := s.projectManager.LoadClips(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load clips"})
+		return
+	}
+
+	// Find the clip to delete
+	var clipToDelete *project.ClipMetadata
+	var clipIndex int = -1
+	for i, clip := range clips {
+		if clip.ID == clipID {
+			clipToDelete = &clip
+			clipIndex = i
+			break
+		}
+	}
+
+	if clipToDelete == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Clip not found"})
+		return
+	}
+
+	// Delete the clip file
+	if err := os.Remove(clipToDelete.FilePath); err != nil && !os.IsNotExist(err) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete clip file"})
+		return
+	}
+
+	// Remove clip from metadata
+	clips = append(clips[:clipIndex], clips[clipIndex+1:]...)
+	
+	// Save updated clips metadata
+	if err := s.projectManager.SaveClips(projectID, clips); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update clips metadata"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Clip deleted successfully",
+		"deleted_clip_id": clipID,
 	})
 }
 

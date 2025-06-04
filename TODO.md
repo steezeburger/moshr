@@ -1,3 +1,1 @@
 # TODOs
-
-- simple brutalist styling
