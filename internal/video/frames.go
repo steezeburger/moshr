@@ -36,7 +36,9 @@ func (fe *FrameExtractor) ExtractClip(inputPath, outputPath string, frameRange F
 		"-i", inputPath,
 		"-ss", fmt.Sprintf("%.3f", startTime),
 		"-t", fmt.Sprintf("%.3f", duration),
-		"-c", "copy",
+		"-c:v", "libxvid",
+		"-c:a", "pcm_s16le",
+		"-f", "avi",
 		outputPath,
 		"-y")
 

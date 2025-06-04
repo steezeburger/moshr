@@ -709,6 +709,10 @@ class MoshrApp {
                     <h4>Variation ${index + 1}</h4>
                     <div class="status completed">Completed</div>
                     <p>Intensity: ${job.params.intensity}</p>
+                    <div class="convert-actions">
+                        <button onclick="app.convertMosh('${filename}', 'mp4')" class="convert-btn">Convert to MP4</button>
+                        <button onclick="app.convertMosh('${filename}', 'webm')" class="convert-btn">Convert to WebM</button>
+                    </div>
                 </div>
             `;
 
@@ -781,6 +785,10 @@ class MoshrApp {
                         Intensity: ${mosh.params.intensity}<br>
                         ${mosh.params.iframe_removal ? 'I-Frame Removal' : ''}<br>
                         ${mosh.params.pframe_duplication ? `P-Frame Dup: ${mosh.params.duplication_count}` : ''}
+                    </div>
+                    <div class="convert-actions">
+                        <button onclick="app.convertMosh('${filename}', 'mp4')" class="convert-btn small">MP4</button>
+                        <button onclick="app.convertMosh('${filename}', 'webm')" class="convert-btn small">WebM</button>
                     </div>
                 `;
 
@@ -1002,6 +1010,44 @@ class MoshrApp {
         this.progress.style.display = 'block';
         this.progressText.textContent = text;
         this.progressBar.style.width = percentage + '%';
+    }
+
+    async convertMosh(filename, format) {
+        if (!this.currentProjectData) return;
+
+        try {
+            this.updateProgress(`Converting ${filename} to ${format.toUpperCase()}...`, 50);
+
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/convert-mosh/${filename}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    format: format
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error('Conversion failed');
+            }
+
+            const result = await response.json();
+            
+            this.updateProgress(`Conversion completed: ${result.output_file}`, 100);
+            
+            // Show success message with file location
+            alert(`Successfully converted to ${format.toUpperCase()}!\nFile saved as: ${result.output_file}`);
+
+            setTimeout(() => {
+                this.progress.style.display = 'none';
+            }, 3000);
+
+        } catch (error) {
+            console.error('Conversion error:', error);
+            this.updateProgress('Conversion failed', 0);
+            alert('Conversion failed: ' + error.message);
+        }
     }
 }
 

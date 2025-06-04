@@ -71,6 +71,7 @@ func (s *Server) SetupRoutes() *gin.Engine {
 		api.POST("/projects/:id/timeline", s.handleGenerateTimeline)
 		api.POST("/projects/:id/clip", s.handleExtractClip)
 		api.GET("/projects/:id/frame/:filename/:timestamp", s.handleGetFrame)
+		api.POST("/projects/:id/convert-mosh/:filename", s.handleConvertMosh)
 		api.POST("/migrate", s.handleMigrateOldFiles)
 	}
 	
@@ -282,9 +283,9 @@ func (s *Server) handleMosh(c *gin.Context) {
 			presets = effect.CreateRandomVariations(3, req.Intensity)
 		default:
 			presets = []video.MoshParams{
-				{Intensity: 0.3, IFrameRemoval: false, PFrameDuplication: true, DuplicationCount: 1},
-				{Intensity: 0.6, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 2},
-				{Intensity: 0.9, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 4},
+				{Intensity: 0.5, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 15},
+				{Intensity: 0.8, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 25},
+				{Intensity: 1.0, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 40},
 			}
 		}
 
@@ -299,9 +300,9 @@ func (s *Server) handleMosh(c *gin.Context) {
 			Effect:    req.Effect,
 			Params: video.MoshParams{
 				Intensity:         req.Intensity,
-				IFrameRemoval:     req.Intensity > 0.5,
-				PFrameDuplication: req.Intensity > 0.3,
-				DuplicationCount:  int(req.Intensity * 5),
+				IFrameRemoval:     req.Intensity > 0.2,
+				PFrameDuplication: req.Intensity > 0.1,
+				DuplicationCount:  int(req.Intensity * 25) + 5,
 			},
 		}
 
@@ -798,4 +799,74 @@ func (s *Server) scanExistingMoshes(projectID string) error {
 	}
 
 	return nil
+}
+
+func (s *Server) handleConvertMosh(c *gin.Context) {
+	projectID := c.Param("id")
+	filename := c.Param("filename")
+	
+	var req struct {
+		Format string `json:"format"` // "mp4" or "webm"
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if req.Format != "mp4" && req.Format != "webm" {
+		req.Format = "mp4" // Default to MP4
+	}
+
+	// Find the moshed file in project moshes directory
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	
+	var inputPath string
+	entries, err := os.ReadDir(moshesDir)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read moshes directory"})
+		return
+	}
+
+	// Look for the file in session directories
+	for _, entry := range entries {
+		if entry.IsDir() {
+			sessionPath := filepath.Join(moshesDir, entry.Name(), filename)
+			if _, err := os.Stat(sessionPath); err == nil {
+				inputPath = sessionPath
+				break
+			}
+		}
+	}
+	
+	if inputPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Moshed file not found"})
+		return
+	}
+
+	// Generate output filename
+	baseName := strings.TrimSuffix(filename, ".avi")
+	outputFilename := fmt.Sprintf("%s_converted.%s", baseName, req.Format)
+	outputPath := filepath.Join(filepath.Dir(inputPath), outputFilename)
+
+	// Convert the file
+	var convertErr error
+	if req.Format == "mp4" {
+		convertErr = s.converter.MoshedAVIToMP4(inputPath, outputPath)
+	} else {
+		convertErr = s.converter.MoshedAVIToWebM(inputPath, outputPath)
+	}
+
+	if convertErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": convertErr.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Conversion completed",
+		"output_file": outputFilename,
+		"output_path": outputPath,
+		"format": req.Format,
+	})
 }

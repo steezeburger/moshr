@@ -51,3 +51,43 @@ func GetOutputPath(inputPath, suffix string) string {
 	base := strings.TrimSuffix(inputPath, ext)
 	return fmt.Sprintf("%s_%s%s", base, suffix, ext)
 }
+
+func (c *Converter) MoshedAVIToMP4(inputPath, outputPath string) error {
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-c:v", "libx264", 
+		"-preset", "medium",
+		"-crf", "18", // High quality
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart", // Web-optimized
+		"-pix_fmt", "yuv420p", // Broad compatibility
+		outputPath,
+		"-y")
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("moshed AVI to MP4 conversion failed: %v\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}
+
+func (c *Converter) MoshedAVIToWebM(inputPath, outputPath string) error {
+	cmd := exec.Command("ffmpeg",
+		"-i", inputPath,
+		"-c:v", "libvpx-vp9",
+		"-crf", "30", // Good quality for VP9
+		"-b:v", "0", // Variable bitrate
+		"-c:a", "libvorbis",
+		"-b:a", "128k",
+		outputPath,
+		"-y")
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("moshed AVI to WebM conversion failed: %v\nOutput: %s", err, string(output))
+	}
+
+	return nil
+}

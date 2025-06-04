@@ -24,13 +24,13 @@ func (d *DatamoshEffect) generateParams(intensity float64) video.MoshParams {
 		Intensity: intensity,
 	}
 
-	if intensity > 0.3 {
+	if intensity > 0.2 {
 		params.IFrameRemoval = true
 	}
 
-	if intensity > 0.5 {
+	if intensity > 0.1 {
 		params.PFrameDuplication = true
-		params.DuplicationCount = int(intensity * 5)
+		params.DuplicationCount = int(intensity * 25) + 5
 	}
 
 	return params
@@ -39,22 +39,22 @@ func (d *DatamoshEffect) generateParams(intensity float64) video.MoshParams {
 func (d *DatamoshEffect) CreatePresets() []video.MoshParams {
 	return []video.MoshParams{
 		{
-			Intensity:         0.2,
-			IFrameRemoval:     false,
-			PFrameDuplication: true,
-			DuplicationCount:  1,
-		},
-		{
 			Intensity:         0.5,
 			IFrameRemoval:     true,
 			PFrameDuplication: true,
-			DuplicationCount:  2,
+			DuplicationCount:  15,
 		},
 		{
 			Intensity:         0.8,
 			IFrameRemoval:     true,
 			PFrameDuplication: true,
-			DuplicationCount:  4,
+			DuplicationCount:  25,
+		},
+		{
+			Intensity:         1.0,
+			IFrameRemoval:     true,
+			PFrameDuplication: true,
+			DuplicationCount:  40,
 		},
 	}
 }
