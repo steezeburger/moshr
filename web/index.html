@@ -14,7 +14,7 @@
         </header>
 
         <main>
-            <section class="project-section">
+            <section class="project-management" id="projectManagement">
                 <h3>Project Management</h3>
                 <div class="project-controls">
                     <button id="newProjectBtn">Create New Project</button>
@@ -24,9 +24,12 @@
                     <h3>Existing Projects</h3>
                     <div id="projectsGrid" class="projects-grid"></div>
                 </div>
-                
-                <div id="currentProject" style="display: none;">
-                    <h4>Current Project: <span id="currentProjectName"></span></h4>
+            </section>
+
+            <section class="project-workspace" id="projectWorkspace" style="display: none;">
+                <div class="project-header">
+                    <button id="backToProjectsBtn">← Back to Projects</button>
+                    <h2 id="currentProjectName">Project Name</h2>
                 </div>
             </section>
 

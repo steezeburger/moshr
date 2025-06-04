@@ -20,10 +20,12 @@ class MoshrApp {
 
     initializeElements() {
         this.newProjectBtn = document.getElementById('newProjectBtn');
+        this.projectManagement = document.getElementById('projectManagement');
+        this.projectWorkspace = document.getElementById('projectWorkspace');
+        this.backToProjectsBtn = document.getElementById('backToProjectsBtn');
         this.fileControls = document.getElementById('fileControls');
         this.addFileBtn = document.getElementById('addFileBtn');
         this.projectsGrid = document.getElementById('projectsGrid');
-        this.currentProjectElement = document.getElementById('currentProject');
         this.currentProjectName = document.getElementById('currentProjectName');
         this.uploadSection = document.getElementById('uploadSection');
         this.uploadArea = document.getElementById('uploadArea');
@@ -66,6 +68,7 @@ class MoshrApp {
 
     setupEventListeners() {
         this.newProjectBtn.addEventListener('click', this.createNewProject.bind(this));
+        this.backToProjectsBtn.addEventListener('click', this.showProjectManagement.bind(this));
         this.addFileBtn.addEventListener('click', this.toggleUploadSection.bind(this));
         
         this.uploadArea.addEventListener('click', () => this.fileInput.click());
@@ -903,10 +906,27 @@ class MoshrApp {
     }
 
     showProjectSelected() {
-        this.currentProjectElement.style.display = 'block';
+        this.projectManagement.style.display = 'none';
+        this.projectWorkspace.style.display = 'block';
         this.currentProjectName.textContent = this.currentProjectData.name;
         this.fileControls.style.display = 'block';
         this.uploadSection.style.display = 'none';
+    }
+
+    showProjectManagement() {
+        this.projectManagement.style.display = 'block';
+        this.projectWorkspace.style.display = 'none';
+        this.fileControls.style.display = 'none';
+        this.uploadSection.style.display = 'none';
+        this.videoInfo.style.display = 'none';
+        this.timelineSection.style.display = 'none';
+        this.controls.style.display = 'none';
+        this.progress.style.display = 'none';
+        this.clipsLibrary.style.display = 'none';
+        this.moshHistory.style.display = 'none';
+        this.results.style.display = 'none';
+        this.jobsSection.style.display = 'none';
+        this.currentProjectData = null;
     }
 
     toggleUploadSection() {
