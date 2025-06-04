@@ -21,6 +21,8 @@ class MoshrApp {
     initializeElements() {
         this.newProjectBtn = document.getElementById('newProjectBtn');
         this.migrateBtn = document.getElementById('migrateBtn');
+        this.fileControls = document.getElementById('fileControls');
+        this.addFileBtn = document.getElementById('addFileBtn');
         this.projectsGrid = document.getElementById('projectsGrid');
         this.currentProjectElement = document.getElementById('currentProject');
         this.currentProjectName = document.getElementById('currentProjectName');
@@ -66,6 +68,7 @@ class MoshrApp {
     setupEventListeners() {
         this.newProjectBtn.addEventListener('click', this.createNewProject.bind(this));
         this.migrateBtn.addEventListener('click', this.migrateOldFiles.bind(this));
+        this.addFileBtn.addEventListener('click', this.toggleUploadSection.bind(this));
         
         this.uploadArea.addEventListener('click', () => this.fileInput.click());
         this.uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
@@ -904,7 +907,18 @@ class MoshrApp {
     showProjectSelected() {
         this.currentProjectElement.style.display = 'block';
         this.currentProjectName.textContent = this.currentProjectData.name;
-        this.uploadSection.style.display = 'block';
+        this.fileControls.style.display = 'block';
+        this.uploadSection.style.display = 'none';
+    }
+
+    toggleUploadSection() {
+        if (this.uploadSection.style.display === 'none') {
+            this.uploadSection.style.display = 'block';
+            this.addFileBtn.textContent = 'Hide Upload';
+        } else {
+            this.uploadSection.style.display = 'none';
+            this.addFileBtn.textContent = 'Add New File';
+        }
     }
 
     async loadExistingProjectFile(project) {
