@@ -24,20 +24,26 @@ type WSHubInterface interface {
 	BroadcastJobUpdate(jobID, status string, progress float64)
 }
 
-type BatchProcessor struct {
-	jobs    map[string]*Job
-	jobsMu  sync.RWMutex
-	workers int
-	queue   chan *Job
-	wsHub   WSHubInterface
+type ConverterInterface interface {
+	GeneratePreview(inputPath, outputPath string, width, height int) error
 }
 
-func NewBatchProcessor(workers int, wsHub WSHubInterface) *BatchProcessor {
+type BatchProcessor struct {
+	jobs      map[string]*Job
+	jobsMu    sync.RWMutex
+	workers   int
+	queue     chan *Job
+	wsHub     WSHubInterface
+	converter ConverterInterface
+}
+
+func NewBatchProcessor(workers int, wsHub WSHubInterface, converter ConverterInterface) *BatchProcessor {
 	return &BatchProcessor{
-		jobs:    make(map[string]*Job),
-		workers: workers,
-		queue:   make(chan *Job, 100),
-		wsHub:   wsHub,
+		jobs:      make(map[string]*Job),
+		workers:   workers,
+		queue:     make(chan *Job, 100),
+		wsHub:     wsHub,
+		converter: converter,
 	}
 }
 
@@ -108,7 +114,20 @@ func (bp *BatchProcessor) processJob(job *Job) {
 		fmt.Printf("Job %s failed: %v\n", job.ID, err)
 		bp.updateJob(job.ID, "failed", 0, err.Error())
 	} else {
-		fmt.Printf("Job %s completed successfully\n", job.ID)
+		fmt.Printf("Job %s completed successfully, generating preview\n", job.ID)
+		bp.updateJob(job.ID, "processing", 0.9, "Generating preview")
+		
+		// Generate preview in the same directory as the mosh file
+		previewPath := filepath.Join(job.OutputDir, fmt.Sprintf("preview_%s.jpg", job.ID))
+		if bp.converter != nil {
+			previewErr := bp.converter.GeneratePreview(outputPath, previewPath, 300, 200)
+			if previewErr != nil {
+				fmt.Printf("Failed to generate preview for job %s: %v\n", job.ID, previewErr)
+			} else {
+				fmt.Printf("Preview generated for job %s at %s\n", job.ID, previewPath)
+			}
+		}
+		
 		bp.updateJob(job.ID, "completed", 1.0, "")
 	}
 }

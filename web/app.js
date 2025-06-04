@@ -9,7 +9,7 @@ class MoshrApp {
         this.selectedFrames = [];
         this.detectedScenes = [];
         this.createdClips = [];
-        this.moshHistory = [];
+        this.moshSessions = [];
         this.selectedClip = null;
         
         this.initializeElements();
@@ -20,11 +20,8 @@ class MoshrApp {
 
     initializeElements() {
         this.newProjectBtn = document.getElementById('newProjectBtn');
-        this.loadProjectBtn = document.getElementById('loadProjectBtn');
         this.migrateBtn = document.getElementById('migrateBtn');
-        this.projectSelector = document.getElementById('projectSelector');
-        this.projectList = document.getElementById('projectList');
-        this.selectProjectBtn = document.getElementById('selectProjectBtn');
+        this.projectsGrid = document.getElementById('projectsGrid');
         this.currentProjectElement = document.getElementById('currentProject');
         this.currentProjectName = document.getElementById('currentProjectName');
         this.uploadSection = document.getElementById('uploadSection');
@@ -68,9 +65,7 @@ class MoshrApp {
 
     setupEventListeners() {
         this.newProjectBtn.addEventListener('click', this.createNewProject.bind(this));
-        this.loadProjectBtn.addEventListener('click', this.showProjectSelector.bind(this));
         this.migrateBtn.addEventListener('click', this.migrateOldFiles.bind(this));
-        this.selectProjectBtn.addEventListener('click', this.selectProject.bind(this));
         
         this.uploadArea.addEventListener('click', () => this.fileInput.click());
         this.uploadArea.addEventListener('dragover', this.handleDragOver.bind(this));
@@ -742,29 +737,29 @@ class MoshrApp {
             source: this.clipSource.value === 'clip' ? this.selectedClip?.name : 'Full Video'
         };
 
-        this.moshHistory.unshift(sessionGroup);
+        this.moshSessions.unshift(sessionGroup);
         this.displayMoshHistory();
         this.moshHistory.style.display = 'block';
     }
 
     displayMoshHistory() {
-        if (this.moshHistory.length === 0) return;
+        if (this.moshSessions.length === 0) return;
 
         const historyContainer = this.historyContainer;
         historyContainer.innerHTML = '';
 
-        this.moshHistory.forEach((group, groupIndex) => {
+        this.moshSessions.forEach((group, groupIndex) => {
             const groupElement = document.createElement('div');
             groupElement.className = 'history-group';
 
-            const timestamp = new Date(group.timestamp).toLocaleString();
+            // Handle both API format (created_at) and frontend format (timestamp)
+            const timestamp = new Date(group.created_at || group.timestamp).toLocaleString();
             
             groupElement.innerHTML = `
                 <h4>
-                    Session ${this.moshHistory.length - groupIndex}
+                    ${group.name || `Session ${this.moshSessions.length - groupIndex}`}
                     <span class="history-timestamp">${timestamp}</span>
                 </h4>
-                <div class="history-source">Source: ${group.source}</div>
                 <div class="history-moshes" id="historyMoshes${groupIndex}"></div>
             `;
 
@@ -774,8 +769,11 @@ class MoshrApp {
                 const moshElement = document.createElement('div');
                 moshElement.className = 'history-mosh-item';
 
+                // Extract filename from file_path for API compatibility
+                const filename = mosh.filename || (mosh.file_path ? mosh.file_path.split('/').pop() : 'unknown.avi');
+
                 moshElement.innerHTML = `
-                    <img src="/api/preview/${mosh.filename}?width=200&height=150" alt="${mosh.effect}" />
+                    <img src="/api/projects/${this.currentProjectData.id}/preview/${filename}?width=200&height=150" alt="${mosh.effect}" />
                     <div class="mosh-info">
                         ${mosh.effect.charAt(0).toUpperCase() + mosh.effect.slice(1)} Effect
                     </div>
@@ -806,13 +804,28 @@ class MoshrApp {
     }
 
     populateProjectList(projects) {
-        this.projectList.innerHTML = '<option value="">Select a project...</option>';
+        this.projectsGrid.innerHTML = '';
         if (projects && Array.isArray(projects)) {
             projects.forEach(project => {
-                const option = document.createElement('option');
-                option.value = project.id;
-                option.textContent = `${project.name} (${new Date(project.created_at).toLocaleDateString()})`;
-                this.projectList.appendChild(option);
+                const projectCard = document.createElement('div');
+                projectCard.className = 'project-card';
+                projectCard.dataset.projectId = project.id;
+                
+                const originalFile = project.original_file ? project.original_file.split('/').pop() : 'No file uploaded';
+                const hasConvertedFile = project.converted_file ? 'Yes' : 'No';
+                
+                projectCard.innerHTML = `
+                    <h4>${project.name}</h4>
+                    <div class="project-date">Created: ${new Date(project.created_at).toLocaleDateString()}</div>
+                    <div class="project-file">File: ${originalFile}</div>
+                    <div class="project-stats">
+                        <span>Converted: ${hasConvertedFile}</span>
+                        <span>ID: ${project.id.split('_').pop()}</span>
+                    </div>
+                `;
+                
+                projectCard.addEventListener('click', () => this.selectProjectCard(project.id, projectCard));
+                this.projectsGrid.appendChild(projectCard);
             });
         }
     }
@@ -845,13 +858,10 @@ class MoshrApp {
         }
     }
 
-    showProjectSelector() {
-        this.projectSelector.style.display = 'block';
-    }
-
-    async selectProject() {
-        const projectId = this.projectList.value;
-        if (!projectId) return;
+    async selectProjectCard(projectId, cardElement) {
+        // Update UI to show selected project
+        document.querySelectorAll('.project-card').forEach(card => card.classList.remove('selected'));
+        cardElement.classList.add('selected');
 
         try {
             const response = await fetch(`/api/projects/${projectId}`);
@@ -866,8 +876,9 @@ class MoshrApp {
                     this.displayClips();
                 }
                 if (data.sessions && data.sessions.length > 0) {
-                    this.moshHistory = data.sessions;
+                    this.moshSessions = data.sessions;
                     this.displayMoshHistory();
+                    this.moshHistory.style.display = 'block';
                 }
                 if (data.scenes) this.detectedScenes = data.scenes;
                 
@@ -883,7 +894,6 @@ class MoshrApp {
     }
 
     showProjectSelected() {
-        this.projectSelector.style.display = 'none';
         this.currentProjectElement.style.display = 'block';
         this.currentProjectName.textContent = this.currentProjectData.name;
         this.uploadSection.style.display = 'block';

@@ -31,12 +31,13 @@ func NewServer() *Server {
 	wsHub := NewWSHub()
 	go wsHub.Run()
 	
-	processor := batch.NewBatchProcessor(2, wsHub)
+	converter := video.NewConverter()
+	processor := batch.NewBatchProcessor(2, wsHub, converter)
 	processor.Start()
 	
 	return &Server{
 		processor:      processor,
-		converter:      video.NewConverter(),
+		converter:      converter,
 		analyzer:       video.NewAnalyzer(),
 		sceneDetector:  video.NewSceneDetector(),
 		frameExtractor: video.NewFrameExtractor(),
@@ -329,39 +330,36 @@ func (s *Server) handleGetJob(c *gin.Context) {
 func (s *Server) handlePreview(c *gin.Context) {
 	projectID := c.Param("id")
 	filename := c.Param("filename")
-	width, _ := strconv.Atoi(c.DefaultQuery("width", "320"))
-	height, _ := strconv.Atoi(c.DefaultQuery("height", "240"))
 
-	// Look for the file in project moshes directory first
+	// Extract job ID from filename (moshed_jobID.avi -> jobID)
+	var jobID string
+	if strings.HasPrefix(filename, "moshed_") && strings.HasSuffix(filename, ".avi") {
+		jobID = strings.TrimSuffix(strings.TrimPrefix(filename, "moshed_"), ".avi")
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename format"})
+		return
+	}
+
+	// Look for the preview file in project moshes directory
 	paths := s.projectManager.GetProjectPaths(projectID)
-	
-	// Search for the file in all session directories
-	var inputPath string
 	moshesDir := paths["moshes"]
 	
+	var previewPath string
 	entries, err := os.ReadDir(moshesDir)
 	if err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
-				sessionPath := filepath.Join(moshesDir, entry.Name(), filename)
-				if _, err := os.Stat(sessionPath); err == nil {
-					inputPath = sessionPath
+				sessionPreviewPath := filepath.Join(moshesDir, entry.Name(), fmt.Sprintf("preview_%s.jpg", jobID))
+				if _, err := os.Stat(sessionPreviewPath); err == nil {
+					previewPath = sessionPreviewPath
 					break
 				}
 			}
 		}
 	}
 	
-	// Fallback to old output directory if not found in project
-	if inputPath == "" {
-		inputPath = filepath.Join("output", filename)
-	}
-
-	previewPath := filepath.Join("output", "preview_"+filename+".jpg")
-
-	err = s.converter.GeneratePreview(inputPath, previewPath, width, height)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if previewPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Preview not found"})
 		return
 	}
 
