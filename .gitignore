@@ -4,6 +4,19 @@
 # IDEs
 .idea/
 
+# binaries
+moshr
+bin/
+*.exe
+
 # user files
 projects/*
 !projects/.gitkeep
+
+# temporary files
+*.avi
+*.mp4
+*.webm
+*.jpg
+*.jpeg
+*.png
