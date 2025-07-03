@@ -4,7 +4,7 @@ class MoshrApp {
         this.currentFile = null;
         this.convertedPath = null;
         this.ws = null;
-        this.jobsMap = new Map();
+        this.moshesMap = new Map();
         this.currentFrames = [];
         this.selectedFrames = [];
         this.detectedScenes = [];
@@ -62,8 +62,8 @@ class MoshrApp {
         this.progressText = document.getElementById('progressText');
         this.results = document.getElementById('results');
         this.previewGrid = document.getElementById('previewGrid');
-        this.jobsSection = document.getElementById('jobs');
-        this.jobsList = document.getElementById('jobsList');
+        this.moshesSection = document.getElementById('moshes');
+        this.moshesList = document.getElementById('moshesList');
     }
 
     setupEventListeners() {
@@ -247,7 +247,7 @@ class MoshrApp {
                 this.monitorJobs([result.job_id]);
             }
 
-            this.jobsSection.style.display = 'block';
+            this.moshesSection.style.display = 'block';
             this.updateProgress('Jobs queued', 100);
 
         } catch (error) {
@@ -532,7 +532,7 @@ class MoshrApp {
             }
 
             const result = await response.json();
-            
+
             const clip = {
                 name: result.clip_name,
                 path: result.output_path,
@@ -556,6 +556,12 @@ class MoshrApp {
         }
     }
 
+    getClipThumbnailPath(frameNumber) {
+        if (!this.currentProjectData || frameNumber === undefined || frameNumber === null) return null;
+        
+        return `/projects/${this.currentProjectData.id}/timeline/frame_${String(frameNumber).padStart(6, '0')}.jpg`;
+    }
+
     displayClips() {
         this.clipsLibrary.style.display = 'block';
         this.clipsGrid.innerHTML = '';
@@ -565,10 +571,23 @@ class MoshrApp {
             clipItem.className = 'clip-item';
             clipItem.dataset.clipIndex = index;
 
+            const startFrame = clip.startFrame || clip.start_frame;
+            const endFrame = clip.endFrame || clip.end_frame;
+            const startThumbnailPath = this.getClipThumbnailPath(startFrame);
+            const endThumbnailPath = this.getClipThumbnailPath(endFrame);
+
+            const thumbnailsHtml = (startThumbnailPath || endThumbnailPath) ? `
+                <div class="clip-thumbnails">
+                    ${startThumbnailPath ? `<img src="${startThumbnailPath}" alt="First frame" class="clip-thumbnail" title="Frame ${startFrame}" />` : ''}
+                    ${endThumbnailPath && endFrame !== startFrame ? `<img src="${endThumbnailPath}" alt="Last frame" class="clip-thumbnail" title="Frame ${endFrame}" />` : ''}
+                </div>
+            ` : '';
+
             clipItem.innerHTML = `
+                ${thumbnailsHtml}
                 <h5>${clip.name}</h5>
                 <div class="clip-info">
-                    Frames ${clip.startFrame} - ${clip.endFrame}<br>
+                    Frames ${startFrame} - ${endFrame}<br>
                     Duration: ${clip.duration.toFixed(2)}s
                 </div>
                 <div class="clip-actions">
@@ -636,10 +655,13 @@ class MoshrApp {
     }
 
     async monitorJobs(jobIds) {
+        // Clear previous session jobs
+        this.jobsMap.clear();
+        
         for (const jobId of jobIds) {
             this.jobsMap.set(jobId, { status: 'queued', progress: 0 });
         }
-        this.updateJobsDisplay();
+        this.updateMoshesDisplay();
     }
 
     connectWebSocket() {
@@ -664,26 +686,48 @@ class MoshrApp {
 
     handleWebSocketMessage(message) {
         switch (message.type) {
-            case 'job_update':
-                this.updateJobStatus(message.data.job_id, message.data.status, message.data.progress);
+            case 'mosh_update':
+                this.updateMoshStatus(message.data.mosh_id, message.data.status, message.data.progress);
                 break;
-            case 'jobs_update':
-                this.updateAllJobs(message.data);
+            case 'moshes_update':
+                this.updateAllMoshes(message.data);
                 break;
         }
     }
 
-    updateJobStatus(jobId, status, progress) {
-        if (this.jobsMap.has(jobId)) {
-            this.jobsMap.set(jobId, { status, progress });
-            this.updateJobsDisplay();
+    updateMoshStatus(moshId, status, progress) {
+        console.log('WebSocket mosh update:', { moshId, status, progress });
+        console.log('Moshes in map:', Array.from(this.moshesMap.keys()));
+        
+        if (this.moshesMap.has(moshId)) {
+            const mosh = this.moshesMap.get(moshId);
+            console.log('Found mosh:', mosh);
+            mosh.status = status;
+            mosh.progress = progress;
+            this.moshesMap.set(moshId, mosh);
+            this.updateMoshesDisplay();
             
-            if (status === 'completed') {
+            // Update local progress bar for conversions
+            if (mosh.isConversion && mosh.moshId) {
+                console.log('Updating local progress for moshId:', mosh.moshId);
+                if (status === 'processing') {
+                    this.showLocalProgress(mosh.moshId, `Converting to ${mosh.format.toUpperCase()}... (${Math.round(progress * 100)}%)`, progress * 100);
+                } else if (status === 'completed') {
+                    this.showLocalProgress(mosh.moshId, `Conversion to ${mosh.format.toUpperCase()} completed`, 100);
+                    this.showConvertedFile(moshId, mosh.format);
+                } else if (status === 'failed') {
+                    this.showLocalProgress(mosh.moshId, `Conversion to ${mosh.format.toUpperCase()} failed`, 0);
+                }
+            } else {
+                console.log('Mosh is not conversion or missing moshId:', mosh);
+            }
+            
+            if (status === 'completed' && !mosh.isConversion) {
                 this.loadResults();
                 
-                // Check if all jobs are completed and hide main progress
-                const allCompleted = Array.from(this.jobsMap.values()).every(job => 
-                    job.status === 'completed' || job.status === 'failed'
+                // Check if all moshes are completed and hide main progress
+                const allCompleted = Array.from(this.moshesMap.values()).every(mosh => 
+                    mosh.status === 'completed' || mosh.status === 'failed'
                 );
                 
                 if (allCompleted) {
@@ -692,48 +736,54 @@ class MoshrApp {
                     }, 2000);
                 }
             }
+        } else {
+            console.log('Mosh not found in map for moshId:', moshId);
         }
     }
 
-    updateAllJobs(jobs) {
-        jobs.forEach(job => {
-            this.jobsMap.set(job.id, {
-                status: job.status,
-                progress: job.progress || 0,
-                output_path: job.output_path
+    updateAllMoshes(moshes) {
+        moshes.forEach(mosh => {
+            this.moshesMap.set(mosh.id, {
+                status: mosh.status,
+                progress: mosh.progress || 0,
+                output_path: mosh.output_path
             });
         });
-        this.updateJobsDisplay();
+        this.updateMoshesDisplay();
     }
 
-    updateJobsDisplay() {
+    updateMoshesDisplay() {
         let html = '';
-        this.jobsMap.forEach((job, jobId) => {
+        this.moshesMap.forEach((mosh, moshId) => {
             html += `
-                <div class="job-item">
-                    <h4>Job: ${jobId}</h4>
-                    <div class="status ${job.status}">${job.status}</div>
-                    <div class="job-progress">
-                        <div class="job-progress-bar" style="width: ${job.progress * 100}%"></div>
+                <div class="mosh-item">
+                    <h4>Mosh: ${moshId}</h4>
+                    <div class="status ${mosh.status}">${mosh.status}</div>
+                    <div class="mosh-progress">
+                        <div class="mosh-progress-bar" style="width: ${mosh.progress * 100}%"></div>
                     </div>
                 </div>
             `;
         });
-        this.jobsList.innerHTML = html;
+        this.moshesList.innerHTML = html;
     }
 
     async loadResults() {
         if (!this.currentProjectData) return;
         
         try {
-            const response = await fetch(`/api/projects/${this.currentProjectData.id}/jobs`);
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/moshes`);
             if (!response.ok) return;
 
             const data = await response.json();
-            const completedJobs = data.jobs.filter(job => job.status === 'completed');
+            // Only get completed moshes from the current session
+            const currentSessionMoshIds = Array.from(this.moshesMap.keys());
+            const completedMoshes = data.moshes.filter(mosh => 
+                mosh.status === 'completed' && currentSessionMoshIds.includes(mosh.id)
+            );
             
-            if (completedJobs.length > 0) {
-                this.displayResults(completedJobs);
+            if (completedMoshes.length > 0) {
+                this.displayResults(completedMoshes);
             }
 
         } catch (error) {
@@ -741,32 +791,47 @@ class MoshrApp {
         }
     }
 
-    displayResults(jobs) {
+    async displayResults(moshes) {
         if (!this.currentProjectData) return;
         
         let html = '';
         const newMoshes = [];
         
-        jobs.forEach((job, index) => {
-            const filename = `moshed_${job.id}.avi`;
+        // First, render the basic preview items
+        moshes.forEach((mosh, index) => {
+            const filename = `moshed_${mosh.id}.avi`;
+            
             html += `
-                <div class="preview-item">
+                <div class="preview-item" id="preview-${mosh.id}">
                     <img src="/api/projects/${this.currentProjectData.id}/preview/${filename}?width=300&height=200" alt="Preview ${index + 1}" />
                     <h4>Variation ${index + 1}</h4>
                     <div class="status completed">Completed</div>
-                    <p>Intensity: ${job.params.intensity}</p>
+                    <p>Intensity: ${mosh.params.intensity}</p>
+                    <div class="conversion-progress" id="conversion-progress-${mosh.id}" style="display: none;">
+                        <div class="progress-label" id="progress-label-${mosh.id}">Converting...</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="progress-bar-${mosh.id}"></div>
+                        </div>
+                    </div>
                     <div class="convert-actions">
-                        <button onclick="app.convertMosh('${filename}', 'mp4')" class="convert-btn">Convert to MP4</button>
-                        <button onclick="app.convertMosh('${filename}', 'webm')" class="convert-btn">Convert to WebM</button>
+                        <button onclick="app.handleMp4Action('${filename}', '${mosh.id}')" class="convert-btn" id="mp4-btn-${mosh.id}">
+                            Convert to MP4
+                        </button>
+                        <button onclick="app.handleWebmAction('${filename}', '${mosh.id}')" class="convert-btn" id="webm-btn-${mosh.id}">
+                            Convert to WebM
+                        </button>
+                        <button onclick="app.deleteMosh('${mosh.id}')" class="delete-btn" title="Delete this mosh">
+                            🗑️
+                        </button>
                     </div>
                 </div>
             `;
 
             newMoshes.push({
-                id: job.id,
+                id: mosh.id,
                 filename: filename,
-                effect: job.effect,
-                params: job.params,
+                effect: mosh.effect,
+                params: mosh.params,
                 timestamp: new Date().toISOString(),
                 source: this.clipSource.value === 'clip' ? this.selectedClip?.name : 'Full Video'
             });
@@ -775,16 +840,33 @@ class MoshrApp {
         this.previewGrid.innerHTML = html;
         this.results.style.display = 'block';
         
+        // Now check for existing converted files for each mosh
+        moshes.forEach(mosh => {
+            if (mosh.converted_files) {
+                this.updateConvertedFileUI(mosh.id, mosh.converted_files);
+            }
+        });
+        
         this.addToMoshHistory(newMoshes);
     }
 
     addToMoshHistory(newMoshes) {
         if (newMoshes.length === 0) return;
 
+        let sourceInfo = 'Full Video';
+        if (this.clipSource.value === 'clip' && this.selectedClip) {
+            const startFrame = this.selectedClip.startFrame || this.selectedClip.start_frame;
+            const endFrame = this.selectedClip.endFrame || this.selectedClip.end_frame;
+            sourceInfo = `${this.selectedClip.name} (Frames ${startFrame}-${endFrame})`;
+        }
+
         const sessionGroup = {
             timestamp: new Date().toISOString(),
-            moshes: newMoshes,
-            source: this.clipSource.value === 'clip' ? this.selectedClip?.name : 'Full Video'
+            moshes: newMoshes.map(mosh => ({
+                ...mosh,
+                source: sourceInfo
+            })),
+            source: sourceInfo
         };
 
         this.moshSessions.unshift(sessionGroup);
@@ -805,11 +887,47 @@ class MoshrApp {
             // Handle both API format (created_at) and frontend format (timestamp)
             const timestamp = new Date(group.created_at || group.timestamp).toLocaleString();
             
+            // Extract session ID from group data or generate from timestamp
+            const sessionId = group.id || group.session_id || this.getSessionIdFromTimestamp(group.created_at || group.timestamp);
+            
+            // Get source information
+            const sourceInfo = group.source || (group.moshes && group.moshes[0] ? group.moshes[0].source : null) || 'Unknown Source';
+            const isClipSource = sourceInfo !== 'Full Video' && sourceInfo !== 'Unknown Source';
+            
+            // Generate clip thumbnails if this session used a clip
+            let clipThumbnailsHtml = '';
+            if (isClipSource && sourceInfo.includes('Frames ')) {
+                const frameMatch = sourceInfo.match(/Frames (\d+)-(\d+)/);
+                if (frameMatch) {
+                    const startFrame = parseInt(frameMatch[1]);
+                    const endFrame = parseInt(frameMatch[2]);
+                    const startThumbnail = this.getClipThumbnailPath(startFrame);
+                    const endThumbnail = this.getClipThumbnailPath(endFrame);
+                    
+                    clipThumbnailsHtml = `
+                        <div class="session-clip-thumbnails">
+                            ${startThumbnail ? `<img src="${startThumbnail}" alt="Start frame" class="session-thumbnail" title="Frame ${startFrame}" />` : ''}
+                            ${endThumbnail && endFrame !== startFrame ? `<img src="${endThumbnail}" alt="End frame" class="session-thumbnail" title="Frame ${endFrame}" />` : ''}
+                        </div>
+                    `;
+                }
+            }
+            
             groupElement.innerHTML = `
                 <h4>
                     ${group.name || `Session ${this.moshSessions.length - groupIndex}`}
                     <span class="history-timestamp">${timestamp}</span>
+                    <button onclick="app.deleteSession('${sessionId}')" class="delete-session-btn" title="Delete entire session">
+                        🗑️ Delete Session
+                    </button>
                 </h4>
+                <div class="session-source">
+                    <strong>Source:</strong> 
+                    <span class="source-indicator ${isClipSource ? 'clip-source' : 'full-source'}">
+                        ${isClipSource ? '📄 ' : '🎬 '}${sourceInfo}
+                    </span>
+                    ${clipThumbnailsHtml}
+                </div>
                 <div class="history-moshes" id="historyMoshes${groupIndex}"></div>
             `;
 
@@ -821,22 +939,50 @@ class MoshrApp {
 
                 // Extract filename from file_path for API compatibility
                 const filename = mosh.filename || (mosh.file_path ? mosh.file_path.split('/').pop() : 'unknown.avi');
+                // Always extract mosh ID from filename for history items since stored IDs are often wrong
+                let moshId;
+                if (filename.startsWith('moshed_')) {
+                    // Extract mosh ID from filename like "moshed_single_1749018199.avi" -> "single_1749018199"
+                    moshId = filename.substring(7).replace('.avi', ''); // Remove "moshed_" and ".avi"
+                } else {
+                    // Fallback to stored ID if filename extraction fails
+                    moshId = mosh.id || 'unknown';
+                }
+
+                // Get effect name, fallback to 'mosh' if not available
+                const effectName = mosh.effect || 'mosh';
 
                 moshElement.innerHTML = `
-                    <img src="/api/projects/${this.currentProjectData.id}/preview/${filename}?width=200&height=150" alt="${mosh.effect}" />
+                    <img src="/api/projects/${this.currentProjectData.id}/preview/${filename}?width=200&height=150" alt="${effectName}" />
                     <div class="mosh-info">
-                        ${mosh.effect.charAt(0).toUpperCase() + mosh.effect.slice(1)} Effect
+                        ${effectName.charAt(0).toUpperCase() + effectName.slice(1)} Effect
                     </div>
                     <div class="mosh-params">
                         Intensity: ${mosh.params.intensity}<br>
                         ${mosh.params.iframe_removal ? 'I-Frame Removal' : ''}<br>
                         ${mosh.params.pframe_duplication ? `P-Frame Dup: ${mosh.params.duplication_count}` : ''}
                     </div>
+                    <div class="conversion-progress" id="history-conversion-progress-${moshId}" style="display: none;">
+                        <div class="progress-label" id="history-progress-label-${moshId}">Converting...</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" id="history-progress-bar-${moshId}"></div>
+                        </div>
+                    </div>
                     <div class="convert-actions">
-                        <button onclick="app.convertMosh('${filename}', 'mp4')" class="convert-btn small">MP4</button>
-                        <button onclick="app.convertMosh('${filename}', 'webm')" class="convert-btn small">WebM</button>
+                        <button onclick="app.handleMp4Action('${filename}', '${moshId}')" class="convert-btn small" id="history-mp4-btn-${moshId}">MP4</button>
+                        <button onclick="app.handleWebmAction('${filename}', '${moshId}')" class="convert-btn small" id="history-webm-btn-${moshId}">WebM</button>
+                        <button onclick="app.deleteMoshFromHistory('${sessionId}', '${moshId}')" class="delete-btn small" title="Delete this mosh">
+                            🗑️
+                        </button>
                     </div>
                 `;
+                
+                // Check for existing converted files for this mosh (only if we have a valid mosh ID)
+                if (moshId && moshId !== 'unknown') {
+                    this.checkExistingConvertedFilesForHistory(sessionId, moshId);
+                } else {
+                    console.log('Skipping converted file check for mosh with invalid mosh ID:', moshId, 'filename:', filename);
+                }
 
                 moshesContainer.appendChild(moshElement);
             });
@@ -1060,7 +1206,11 @@ class MoshrApp {
         if (!this.currentProjectData) return;
 
         try {
-            this.updateProgress(`Converting ${filename} to ${format.toUpperCase()}...`, 50);
+            // Extract mosh ID from filename (moshed_moshId.avi -> moshId)
+            const moshId = filename.replace('moshed_', '').replace('.avi', '');
+            
+            // Show local progress bar
+            this.showLocalProgress(moshId, `Starting ${format.toUpperCase()} conversion...`, 10);
 
             const response = await fetch(`/api/projects/${this.currentProjectData.id}/convert-mosh/${filename}`, {
                 method: 'POST',
@@ -1078,19 +1228,319 @@ class MoshrApp {
 
             const result = await response.json();
             
-            this.updateProgress(`Conversion completed: ${result.output_file}`, 100);
-            
-            // Show success message with file location
-            alert(`Successfully converted to ${format.toUpperCase()}!\nFile saved as: ${result.output_file}`);
-
-            setTimeout(() => {
-                this.progress.style.display = 'none';
-            }, 3000);
+            // Track conversion progress via WebSocket
+            if (result.conversion_id) {
+                this.trackConversionProgress(result.conversion_id, format, moshId);
+            }
 
         } catch (error) {
             console.error('Conversion error:', error);
-            this.updateProgress('Conversion failed', 0);
+            // Extract mosh ID for error display
+            const moshId = filename.replace('moshed_', '').replace('.avi', '');
+            this.showLocalProgress(moshId, 'Conversion failed', 0);
             alert('Conversion failed: ' + error.message);
+        }
+    }
+    
+    trackConversionProgress(conversionId, format, moshId) {
+        // Add to moshes map so WebSocket updates are handled
+        this.moshesMap.set(conversionId, { 
+            status: 'processing', 
+            progress: 0.1,
+            isConversion: true,
+            format: format,
+            moshId: moshId
+        });
+        this.updateMoshesDisplay();
+    }
+    
+    showLocalProgress(moshId, text, percentage) {
+        console.log('showLocalProgress called:', { moshId, text, percentage });
+        
+        // Try both current results and history progress elements
+        const progressElements = [
+            document.getElementById(`conversion-progress-${moshId}`),
+            document.getElementById(`history-conversion-progress-${moshId}`)
+        ];
+        
+        const labelElements = [
+            document.getElementById(`progress-label-${moshId}`),
+            document.getElementById(`history-progress-label-${moshId}`)
+        ];
+        
+        const barElements = [
+            document.getElementById(`progress-bar-${moshId}`),
+            document.getElementById(`history-progress-bar-${moshId}`)
+        ];
+        
+        console.log('Found elements:', {
+            progressElements: progressElements.filter(el => el !== null),
+            labelElements: labelElements.filter(el => el !== null),
+            barElements: barElements.filter(el => el !== null)
+        });
+        
+        progressElements.forEach(el => {
+            if (el) {
+                el.style.display = percentage > 0 ? 'block' : 'none';
+            }
+        });
+        
+        labelElements.forEach(el => {
+            if (el) {
+                el.textContent = text;
+            }
+        });
+        
+        barElements.forEach(el => {
+            if (el) {
+                el.style.width = percentage + '%';
+            }
+        });
+        
+        // Hide progress after completion
+        if (percentage >= 100) {
+            setTimeout(() => {
+                progressElements.forEach(el => {
+                    if (el) el.style.display = 'none';
+                });
+            }, 2000);
+        }
+    }
+    
+    showConvertedFile(conversionId, format) {
+        // Extract mosh ID from conversion ID (format: convert_moshed_moshid.avi_timestamp)
+        const match = conversionId.match(/convert_moshed_(.+?)\.avi_/);
+        if (!match) return;
+        
+        const moshId = match[1];
+        
+        // Update all convert buttons for this mosh ID and format
+        const buttons = [
+            document.getElementById(`${format}-btn-${moshId}`),
+            document.getElementById(`history-${format}-btn-${moshId}`)
+        ];
+        
+        buttons.forEach(button => {
+            if (button) {
+                button.classList.add('converted');
+                button.innerHTML = `▶ Play ${format.toUpperCase()}`;
+            }
+        });
+        
+        // Also reload the current project to refresh all converted file statuses
+        this.reloadCurrentProject();
+    }
+    
+    updateConvertedFileUI(moshId, convertedFiles) {
+        // Update MP4 button if file exists
+        if (convertedFiles.mp4) {
+            const mp4Btn = document.getElementById(`mp4-btn-${moshId}`);
+            if (mp4Btn) {
+                mp4Btn.classList.add('converted');
+                mp4Btn.innerHTML = '▶ Play MP4';
+            }
+        }
+        
+        // Update WebM button if file exists
+        if (convertedFiles.webm) {
+            const webmBtn = document.getElementById(`webm-btn-${moshId}`);
+            if (webmBtn) {
+                webmBtn.classList.add('converted');
+                webmBtn.innerHTML = '▶ Play WebM';
+            }
+        }
+    }
+    
+    async checkExistingConvertedFilesForHistory(sessionId, moshId) {
+        try {
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/converted-files/${sessionId}/${moshId}`);
+            if (!response.ok) {
+                console.log(`API response not ok for mosh ${moshId}:`, response.status);
+                return;
+            }
+            
+            const data = await response.json();
+            const convertedFiles = data.converted_files;
+
+            // Update MP4 button if file exists
+            if (convertedFiles.mp4) {
+                const mp4Btn = document.getElementById(`history-mp4-btn-${moshId}`);
+                if (mp4Btn) {
+                    mp4Btn.classList.add('converted');
+                    mp4Btn.innerHTML = '▶ MP4';
+                }
+            }
+            
+            // Update WebM button if file exists
+            if (convertedFiles.webm) {
+                const webmBtn = document.getElementById(`history-webm-btn-${moshId}`);
+                if (webmBtn) {
+                    webmBtn.classList.add('converted');
+                    webmBtn.innerHTML = '▶ WebM';
+                }
+            }
+            
+        } catch (error) {
+            console.error('Error checking converted files for history:', error);
+        }
+    }
+    
+    
+    getSessionIdFromTimestamp(timestamp) {
+        // Convert timestamp to session directory format (session_UNIX_TIMESTAMP)
+        const date = new Date(timestamp);
+        const unixTimestamp = Math.floor(date.getTime() / 1000);
+        return `session_${unixTimestamp}`;
+    }
+    
+    async handleMp4Action(filename, moshId) {
+        // Check if MP4 already exists
+        const mp4Btn = document.getElementById(`mp4-btn-${moshId}`) || document.getElementById(`history-mp4-btn-${moshId}`);
+        if (mp4Btn && mp4Btn.classList.contains('converted')) {
+            // MP4 exists, find it in session directories
+            this.playConvertedFile(moshId, 'mp4');
+        } else {
+            // MP4 doesn't exist, convert it
+            this.convertMosh(filename, 'mp4');
+        }
+    }
+    
+    async handleWebmAction(filename, moshId) {
+        // Check if WebM already exists
+        const webmBtn = document.getElementById(`webm-btn-${moshId}`) || document.getElementById(`history-webm-btn-${moshId}`);
+        if (webmBtn && webmBtn.classList.contains('converted')) {
+            // WebM exists, find it in session directories
+            this.playConvertedFile(moshId, 'webm');
+        } else {
+            // WebM doesn't exist, convert it
+            this.convertMosh(filename, 'webm');
+        }
+    }
+    
+    async playConvertedFile(moshId, format) {
+        try {
+            // Use the backend to find the file in the correct session directory
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/play-converted/${moshId}/${format}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (data.file_path) {
+                    window.open(data.file_path, '_blank');
+                }
+            }
+        } catch (error) {
+            console.error('Error playing converted file:', error);
+        }
+    }
+    
+    async deleteMosh(moshId) {
+        if (!confirm('Are you sure you want to delete this mosh? This will remove all files (AVI, MP4, WebM, preview).')) {
+            return;
+        }
+        
+        try {
+            // Find the session ID for this mosh (from current results)
+            const currentMoshIds = Array.from(this.moshesMap.keys());
+            if (!currentMoshIds.includes(moshId)) {
+                alert('Cannot delete: This mosh is not from the current session.');
+                return;
+            }
+            
+            // Generate session ID from current time (approximation for current session)
+            const sessionId = this.getCurrentSessionId();
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/sessions/${sessionId}/mosh/${moshId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                // Remove from UI
+                const previewItem = document.getElementById(`preview-${moshId}`);
+                if (previewItem) {
+                    previewItem.remove();
+                }
+                alert('Mosh deleted successfully!');
+            } else {
+                alert('Failed to delete mosh.');
+            }
+        } catch (error) {
+            console.error('Error deleting mosh:', error);
+            alert('Error deleting mosh: ' + error.message);
+        }
+    }
+    
+    async deleteMoshFromHistory(sessionId, moshId) {
+        if (!confirm('Are you sure you want to delete this mosh? This will remove all files (AVI, MP4, WebM, preview).')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/sessions/${sessionId}/mosh/${moshId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                // Reload the project to refresh history
+                await this.reloadCurrentProject();
+            } else {
+                alert('Failed to delete mosh.');
+            }
+        } catch (error) {
+            console.error('Error deleting mosh:', error);
+            alert('Error deleting mosh: ' + error.message);
+        }
+    }
+    
+    async deleteSession(sessionId) {
+        if (!confirm('Are you sure you want to delete this entire session? This will remove ALL moshes in this session permanently.')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}/sessions/${sessionId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                // Reload the project to refresh history
+                await this.reloadCurrentProject();
+            } else {
+                alert('Failed to delete session.');
+            }
+        } catch (error) {
+            console.error('Error deleting session:', error);
+            alert('Error deleting session: ' + error.message);
+        }
+    }
+    
+    getCurrentSessionId() {
+        // Generate session ID for current time
+        const now = new Date();
+        const unixTimestamp = Math.floor(now.getTime() / 1000);
+        return `session_${unixTimestamp}`;
+    }
+    
+    async reloadCurrentProject() {
+        if (!this.currentProjectData) return;
+        
+        try {
+            const response = await fetch(`/api/projects/${this.currentProjectData.id}`);
+            if (response.ok) {
+                const data = await response.json();
+                this.currentProjectData = data.project;
+                
+                // Reload project data
+                if (data.clips && data.clips.length > 0) {
+                    this.createdClips = data.clips;
+                    this.displayClips();
+                }
+                if (data.sessions && data.sessions.length > 0) {
+                    this.moshSessions = data.sessions;
+                    this.displayMoshHistory();
+                    this.moshHistory.style.display = 'block';
+                }
+                if (data.scenes) this.detectedScenes = data.scenes;
+            }
+        } catch (error) {
+            console.error('Failed to reload project:', error);
         }
     }
 }

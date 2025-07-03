@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"moshr/internal/batch"
 	"moshr/internal/effects"
-	"moshr/internal/project"
+	projectpkg "moshr/internal/project"
 	"moshr/internal/video"
 )
 
@@ -23,7 +24,7 @@ type Server struct {
 	analyzer       *video.Analyzer
 	sceneDetector  *video.SceneDetector
 	frameExtractor *video.FrameExtractor
-	projectManager *project.Manager
+	projectManager *projectpkg.Manager
 	wsHub          *WSHub
 }
 
@@ -41,7 +42,7 @@ func NewServer() *Server {
 		analyzer:       video.NewAnalyzer(),
 		sceneDetector:  video.NewSceneDetector(),
 		frameExtractor: video.NewFrameExtractor(),
-		projectManager: project.NewManager(),
+		projectManager: projectpkg.NewManager(),
 		wsHub:          wsHub,
 	}
 }
@@ -64,13 +65,17 @@ func (s *Server) SetupRoutes() *gin.Engine {
 		api.POST("/projects/:id/upload", s.handleUpload)
 		api.POST("/projects/:id/convert", s.handleConvert)
 		api.POST("/projects/:id/mosh", s.handleMosh)
-		api.GET("/projects/:id/jobs", s.handleGetJobs)
-		api.GET("/projects/:id/jobs/:jobId", s.handleGetJob)
+		api.GET("/projects/:id/moshes", s.handleGetMoshes)
+		api.GET("/projects/:id/moshes/:moshId", s.handleGetMosh)
 		api.GET("/projects/:id/preview/:filename", s.handlePreview)
 		api.POST("/projects/:id/scenes", s.handleDetectScenes)
 		api.POST("/projects/:id/timeline", s.handleGenerateTimeline)
 		api.POST("/projects/:id/clip", s.handleExtractClip)
 		api.DELETE("/projects/:id/clips/:clipId", s.handleDeleteClip)
+		api.DELETE("/projects/:id/sessions/:sessionId", s.handleDeleteSession)
+		api.DELETE("/projects/:id/sessions/:sessionId/mosh/:moshId", s.handleDeleteMosh)
+		api.GET("/projects/:id/converted-files/:sessionId/:moshId", s.handleGetConvertedFiles)
+		api.GET("/projects/:id/play-converted/:moshId/:format", s.handlePlayConverted)
 		api.GET("/projects/:id/frame/:filename/:timestamp", s.handleGetFrame)
 		api.POST("/projects/:id/convert-mosh/:filename", s.handleConvertMosh)
 		api.POST("/migrate", s.handleMigrateOldFiles)
@@ -117,10 +122,8 @@ func (s *Server) handleGetProject(c *gin.Context) {
 		return
 	}
 
-	// Scan for existing clips and moshes first
-	s.scanExistingClips(projectID)
-	s.scanExistingMoshes(projectID)
-	
+	s.projectManager.RecoverOrphanedClips(projectID)
+
 	clips, _ := s.projectManager.LoadClips(projectID)
 	sessions, _ := s.projectManager.LoadMoshSessions(projectID)
 	scenes, _ := s.projectManager.LoadScenes(projectID)
@@ -290,12 +293,13 @@ func (s *Server) handleMosh(c *gin.Context) {
 			}
 		}
 
-		jobIDs := s.processor.CreateBatchFromPresets(req.InputPath, sessionDir, presets)
-		c.JSON(http.StatusOK, gin.H{"job_ids": jobIDs, "session_id": sessionID})
+		moshIDs := s.processor.CreateBatchFromPresets(req.InputPath, sessionDir, req.Effect, presets)
+		
+		c.JSON(http.StatusOK, gin.H{"mosh_ids": moshIDs, "session_id": sessionID})
 	} else {
-		jobID := fmt.Sprintf("single_%d", time.Now().Unix())
-		job := &batch.Job{
-			ID:        jobID,
+		moshID := fmt.Sprintf("single_%d", time.Now().Unix())
+		mosh := &batch.Mosh{
+			ID:        moshID,
 			InputPath: req.InputPath,
 			OutputDir: sessionDir,
 			Effect:    req.Effect,
@@ -307,36 +311,38 @@ func (s *Server) handleMosh(c *gin.Context) {
 			},
 		}
 
-		s.processor.AddJob(job)
-		c.JSON(http.StatusOK, gin.H{"job_id": jobID, "session_id": sessionID})
+		s.processor.AddMosh(mosh)
+		
+		c.JSON(http.StatusOK, gin.H{"mosh_id": moshID, "session_id": sessionID})
 	}
 }
 
-func (s *Server) handleGetJobs(c *gin.Context) {
-	jobs := s.processor.GetAllJobs()
-	c.JSON(http.StatusOK, gin.H{"jobs": jobs})
+func (s *Server) handleGetMoshes(c *gin.Context) {
+	moshes := s.processor.GetAllMoshes()
+	
+	c.JSON(http.StatusOK, gin.H{"moshes": moshes})
 }
 
-func (s *Server) handleGetJob(c *gin.Context) {
-	jobID := c.Param("id")
-	job, exists := s.processor.GetJob(jobID)
+func (s *Server) handleGetMosh(c *gin.Context) {
+	moshID := c.Param("id")
+	mosh, exists := s.processor.GetMosh(moshID)
 	
 	if !exists {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Mosh not found"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"job": job})
+	c.JSON(http.StatusOK, gin.H{"mosh": mosh})
 }
 
 func (s *Server) handlePreview(c *gin.Context) {
 	projectID := c.Param("id")
 	filename := c.Param("filename")
 
-	// Extract job ID from filename (moshed_jobID.avi -> jobID)
-	var jobID string
+	// Extract mosh ID from filename (moshed_moshID.avi -> moshID)
+	var moshID string
 	if strings.HasPrefix(filename, "moshed_") && strings.HasSuffix(filename, ".avi") {
-		jobID = strings.TrimSuffix(strings.TrimPrefix(filename, "moshed_"), ".avi")
+		moshID = strings.TrimSuffix(strings.TrimPrefix(filename, "moshed_"), ".avi")
 	} else {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid filename format"})
 		return
@@ -351,7 +357,7 @@ func (s *Server) handlePreview(c *gin.Context) {
 	if err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
-				sessionPreviewPath := filepath.Join(moshesDir, entry.Name(), fmt.Sprintf("preview_%s.jpg", jobID))
+				sessionPreviewPath := filepath.Join(moshesDir, entry.Name(), fmt.Sprintf("preview_%s.jpg", moshID))
 				if _, err := os.Stat(sessionPreviewPath); err == nil {
 					previewPath = sessionPreviewPath
 					break
@@ -505,11 +511,31 @@ func (s *Server) handleExtractClip(c *gin.Context) {
 		return
 	}
 
-	// TODO: Fix ClipMetadata type issue
-	// clipMetadata := project.ClipMetadata{...}
-	// clips, _ := s.projectManager.LoadClips(projectID)
-	// clips = append(clips, clipMetadata)
-	// s.projectManager.SaveClips(projectID, clips)
+	// Save clip metadata
+	clipMetadata := projectpkg.ClipMetadata{
+		ID:         fmt.Sprintf("clip_%d", time.Now().Unix()),
+		Name:       req.OutputName,
+		StartFrame: req.FrameRange.StartFrame,
+		EndFrame:   req.FrameRange.EndFrame,
+		StartTime:  req.FrameRange.StartTime,
+		EndTime:    req.FrameRange.EndTime,
+		Duration:   req.FrameRange.EndTime - req.FrameRange.StartTime,
+		FilePath:   outputPath,
+		CreatedAt:  time.Now(),
+	}
+	
+	clips, err := s.projectManager.LoadClips(projectID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load clips metadata"})
+		return
+	}
+	
+	clips = append(clips, clipMetadata)
+	err = s.projectManager.SaveClips(projectID, clips)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save clips metadata"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"output_path": outputPath,
@@ -529,7 +555,7 @@ func (s *Server) handleDeleteClip(c *gin.Context) {
 	}
 
 	// Find the clip to delete
-	var clipToDelete *project.ClipMetadata
+	var clipToDelete *projectpkg.ClipMetadata
 	var clipIndex int = -1
 	for i, clip := range clips {
 		if clip.ID == clipID {
@@ -716,139 +742,7 @@ func (s *Server) scanExistingTimeline(timelineDir, projectID string) ([]video.Fr
 	return frames, nil
 }
 
-func (s *Server) scanExistingClips(projectID string) error {
-	paths := s.projectManager.GetProjectPaths(projectID)
-	clipsDir := paths["clips"]
-	
-	entries, err := os.ReadDir(clipsDir)
-	if err != nil {
-		return err
-	}
 
-	var clips []project.ClipMetadata
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".avi") {
-			// Parse clip filename like "clip_0_180.avi" for frame numbers
-			clipPath := filepath.Join(clipsDir, entry.Name())
-			
-			startFrame := 0
-			endFrame := 0
-			duration := 0.0
-			
-			// Try to parse frame numbers from filename
-			baseName := strings.TrimSuffix(entry.Name(), ".avi")
-			if strings.HasPrefix(baseName, "clip_") {
-				parts := strings.Split(baseName, "_")
-				if len(parts) >= 3 {
-					if start, err := strconv.Atoi(parts[1]); err == nil {
-						startFrame = start
-					}
-					if end, err := strconv.Atoi(parts[2]); err == nil {
-						endFrame = end
-						// Assume 30fps for duration calculation
-						duration = float64(endFrame-startFrame) / 30.0
-					}
-				}
-			}
-			
-			clip := project.ClipMetadata{
-				ID:         fmt.Sprintf("clip_%d", len(clips)),
-				Name:       entry.Name(),
-				StartFrame: startFrame,
-				EndFrame:   endFrame,
-				StartTime:  float64(startFrame) / 30.0,
-				EndTime:    float64(endFrame) / 30.0,
-				Duration:   duration,
-				FilePath:   clipPath,
-				CreatedAt:  time.Now(),
-			}
-			clips = append(clips, clip)
-		}
-	}
-
-	if len(clips) > 0 {
-		return s.projectManager.SaveClips(projectID, clips)
-	}
-	
-	return nil
-}
-
-func (s *Server) scanExistingMoshes(projectID string) error {
-	paths := s.projectManager.GetProjectPaths(projectID)
-	moshesDir := paths["moshes"]
-	
-	// Check if moshes directory exists
-	if _, err := os.Stat(moshesDir); os.IsNotExist(err) {
-		return nil
-	}
-
-	// Scan for session directories
-	sessionEntries, err := os.ReadDir(moshesDir)
-	if err != nil {
-		return err
-	}
-
-	for _, sessionEntry := range sessionEntries {
-		if sessionEntry.IsDir() {
-			sessionDir := filepath.Join(moshesDir, sessionEntry.Name())
-			
-			// Check if session.json already exists
-			sessionFile := filepath.Join(sessionDir, "session.json")
-			if _, err := os.Stat(sessionFile); err == nil {
-				continue // Session metadata already exists
-			}
-
-			// Scan for mosh files in this session
-			moshEntries, err := os.ReadDir(sessionDir)
-			if err != nil {
-				continue
-			}
-
-			var moshes []project.MoshMetadata
-			for _, moshEntry := range moshEntries {
-				if !moshEntry.IsDir() && strings.HasSuffix(moshEntry.Name(), ".avi") {
-					moshPath := filepath.Join(sessionDir, moshEntry.Name())
-					
-					// Try to parse effect and intensity from filename
-					effect := "unknown"
-					intensity := 0.5
-					
-					if strings.Contains(moshEntry.Name(), "moshed_") {
-						effect = "datamosh"
-					} else if strings.Contains(moshEntry.Name(), "glitch_") {
-						effect = "glitch"
-					}
-
-					mosh := project.MoshMetadata{
-						ID:       fmt.Sprintf("mosh_%d", len(moshes)),
-						Effect:   effect,
-						FilePath: moshPath,
-						Params: map[string]interface{}{
-							"intensity": intensity,
-							"source_file": moshEntry.Name(),
-						},
-						CreatedAt: time.Now(),
-					}
-					moshes = append(moshes, mosh)
-				}
-			}
-
-			// Create session metadata if moshes found
-			if len(moshes) > 0 {
-				session := project.MoshSession{
-					ID:        sessionEntry.Name(),
-					Name:      fmt.Sprintf("Session: %s", sessionEntry.Name()),
-					CreatedAt: time.Now(),
-					Source:    "Scanned from existing files",
-					Moshes:    moshes,
-				}
-				s.projectManager.SaveMoshSession(projectID, session)
-			}
-		}
-	}
-
-	return nil
-}
 
 func (s *Server) handleConvertMosh(c *gin.Context) {
 	projectID := c.Param("id")
@@ -899,6 +793,12 @@ func (s *Server) handleConvertMosh(c *gin.Context) {
 	outputFilename := fmt.Sprintf("%s_converted.%s", baseName, req.Format)
 	outputPath := filepath.Join(filepath.Dir(inputPath), outputFilename)
 
+	// Start file size monitoring for progress
+	done := make(chan bool)
+	conversionID := fmt.Sprintf("convert_%s_%d", filename, time.Now().Unix())
+	
+	go s.monitorConversionProgress(conversionID, outputPath, done)
+	
 	// Convert the file
 	var convertErr error
 	if req.Format == "mp4" {
@@ -906,16 +806,285 @@ func (s *Server) handleConvertMosh(c *gin.Context) {
 	} else {
 		convertErr = s.converter.MoshedAVIToWebM(inputPath, outputPath)
 	}
+	
+	// Stop monitoring
+	done <- true
+	close(done)
 
 	if convertErr != nil {
+		s.wsHub.BroadcastMoshUpdate(conversionID, "failed", 0)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": convertErr.Error()})
 		return
 	}
 
+	s.wsHub.BroadcastMoshUpdate(conversionID, "completed", 1.0)
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Conversion completed",
 		"output_file": outputFilename,
 		"output_path": outputPath,
 		"format": req.Format,
+		"conversion_id": conversionID,
 	})
 }
+
+func (s *Server) monitorConversionProgress(conversionID, outputPath string, done chan bool) {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	
+	startTime := time.Now()
+	lastSize := int64(0)
+	
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			stat, err := os.Stat(outputPath)
+			if err != nil {
+				continue
+			}
+			
+			currentSize := stat.Size()
+			elapsed := time.Since(startTime).Seconds()
+			
+			// Calculate progress based on file size growth
+			var progress float64
+			if currentSize > lastSize {
+				// File is growing - estimate progress based on time elapsed
+				progress = 0.1 + (0.8 * elapsed / 20.0) // Assume 20 second average conversion time
+				if progress > 0.9 {
+					progress = 0.9 // Cap at 90% until actual completion
+				}
+			} else if elapsed > 3 {
+				// If no size change after 3 seconds, show gradual progress
+				progress = 0.2 + (elapsed / 30.0) * 0.6 // Slow progress over 30 seconds
+				if progress > 0.8 {
+					progress = 0.8
+				}
+			}
+			
+			if progress > 0.1 {
+				s.wsHub.BroadcastMoshUpdate(conversionID, "processing", progress)
+			}
+			
+			lastSize = currentSize
+		}
+	}
+}
+
+func (s *Server) handleGetConvertedFiles(c *gin.Context) {
+	projectID := c.Param("id")
+	sessionID := c.Param("sessionId")
+	moshID := c.Param("moshId")
+	
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	
+	convertedFiles := map[string]bool{
+		"mp4":  false,
+		"webm": false,
+	}
+	
+	// Check specific session directory for converted files
+	sessionDir := filepath.Join(moshesDir, sessionID)
+	
+	// Check for MP4
+	mp4Path := filepath.Join(sessionDir, fmt.Sprintf("moshed_%s_converted.mp4", moshID))
+	fmt.Printf("DEBUG: Checking MP4 path: %s\n", mp4Path)
+	if _, err := os.Stat(mp4Path); err == nil {
+		fmt.Printf("DEBUG: Found MP4 file!\n")
+		convertedFiles["mp4"] = true
+	} else {
+		fmt.Printf("DEBUG: MP4 file not found: %v\n", err)
+	}
+	
+	// Check for WebM
+	webmPath := filepath.Join(sessionDir, fmt.Sprintf("moshed_%s_converted.webm", moshID))
+	fmt.Printf("DEBUG: Checking WebM path: %s\n", webmPath)
+	if _, err := os.Stat(webmPath); err == nil {
+		fmt.Printf("DEBUG: Found WebM file!\n")
+		convertedFiles["webm"] = true
+	} else {
+		fmt.Printf("DEBUG: WebM file not found: %v\n", err)
+	}
+	
+	// Also list what files actually exist in the session directory
+	entries, err := os.ReadDir(sessionDir)
+	if err != nil {
+		fmt.Printf("DEBUG: Cannot read session dir %s: %v\n", sessionDir, err)
+	} else {
+		fmt.Printf("DEBUG: Files in session dir %s:\n", sessionDir)
+		for _, entry := range entries {
+			fmt.Printf("  - %s\n", entry.Name())
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"mosh_id": moshID,
+		"session_id": sessionID,
+		"converted_files": convertedFiles,
+		"debug": map[string]string{
+			"session_dir": sessionDir,
+			"mp4_path": mp4Path,
+			"webm_path": webmPath,
+		},
+	})
+}
+
+func (s *Server) checkMoshConvertedFiles(projectID, sessionID, moshID string) map[string]bool {
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	
+	convertedFiles := map[string]bool{
+		"mp4":  false,
+		"webm": false,
+	}
+	
+	// Check only the specific session directory
+	sessionDir := filepath.Join(moshesDir, sessionID)
+	
+	// Check for MP4
+	mp4Path := filepath.Join(sessionDir, fmt.Sprintf("moshed_%s_converted.mp4", moshID))
+	if _, err := os.Stat(mp4Path); err == nil {
+		convertedFiles["mp4"] = true
+	}
+	
+	// Check for WebM
+	webmPath := filepath.Join(sessionDir, fmt.Sprintf("moshed_%s_converted.webm", moshID))
+	if _, err := os.Stat(webmPath); err == nil {
+		convertedFiles["webm"] = true
+	}
+	
+	return convertedFiles
+}
+
+func (s *Server) handlePlayConverted(c *gin.Context) {
+	projectID := c.Param("id")
+	moshID := c.Param("moshId")
+	format := c.Param("format")
+	
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	
+	// Search all session directories for the converted file
+	entries, err := os.ReadDir(moshesDir)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read moshes directory"})
+		return
+	}
+	
+	for _, entry := range entries {
+		if entry.IsDir() {
+			sessionDir := filepath.Join(moshesDir, entry.Name())
+			convertedFile := filepath.Join(sessionDir, fmt.Sprintf("moshed_%s_converted.%s", moshID, format))
+			
+			if _, err := os.Stat(convertedFile); err == nil {
+				// Found the file, return the relative path for serving
+				relativePath := fmt.Sprintf("/projects/%s/moshes/%s/moshed_%s_converted.%s", projectID, entry.Name(), moshID, format)
+				c.JSON(http.StatusOK, gin.H{
+					"file_path": relativePath,
+					"session_dir": entry.Name(),
+				})
+				return
+			}
+		}
+	}
+	
+	c.JSON(http.StatusNotFound, gin.H{"error": "Converted file not found"})
+}
+
+func (s *Server) handleDeleteMosh(c *gin.Context) {
+	projectID := c.Param("id")
+	sessionID := c.Param("sessionId")
+	moshID := c.Param("moshId")
+	
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	sessionDir := filepath.Join(moshesDir, sessionID)
+	
+	// Delete all files related to this mosh
+	filesToDelete := []string{
+		fmt.Sprintf("moshed_%s.avi", moshID),
+		fmt.Sprintf("moshed_%s_converted.mp4", moshID),
+		fmt.Sprintf("moshed_%s_converted.webm", moshID),
+		fmt.Sprintf("preview_%s.jpg", moshID),
+	}
+	
+	deletedFiles := []string{}
+	for _, filename := range filesToDelete {
+		filePath := filepath.Join(sessionDir, filename)
+		if err := os.Remove(filePath); err == nil {
+			deletedFiles = append(deletedFiles, filename)
+		}
+	}
+	
+	// Update session metadata to remove the deleted mosh
+	sessionFile := filepath.Join(sessionDir, "session.json")
+	if sessionData, err := os.ReadFile(sessionFile); err == nil {
+		var session projectpkg.MoshSession
+		if json.Unmarshal(sessionData, &session) == nil {
+			// Remove the mosh with matching mosh ID from the session
+			updatedMoshes := []projectpkg.MoshMetadata{}
+			for _, mosh := range session.Moshes {
+				// Check both the stored ID and extract ID from filename
+				storedMoshID := mosh.ID
+				if mosh.FilePath != "" {
+					filename := filepath.Base(mosh.FilePath)
+					if strings.HasPrefix(filename, "moshed_") && strings.HasSuffix(filename, ".avi") {
+						storedMoshID = strings.TrimSuffix(strings.TrimPrefix(filename, "moshed_"), ".avi")
+					}
+				}
+				
+				// Keep moshes that don't match the deleted mosh ID
+				if storedMoshID != moshID {
+					updatedMoshes = append(updatedMoshes, mosh)
+				}
+			}
+			
+			session.Moshes = updatedMoshes
+			
+			// Save updated session metadata
+			if updatedData, err := json.MarshalIndent(session, "", "  "); err == nil {
+				os.WriteFile(sessionFile, updatedData, 0644)
+			}
+		}
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Mosh deleted successfully",
+		"session_id": sessionID,
+		"mosh_id": moshID,
+		"deleted_files": deletedFiles,
+	})
+}
+
+func (s *Server) handleDeleteSession(c *gin.Context) {
+	projectID := c.Param("id")
+	sessionID := c.Param("sessionId")
+	
+	paths := s.projectManager.GetProjectPaths(projectID)
+	moshesDir := paths["moshes"]
+	sessionDir := filepath.Join(moshesDir, sessionID)
+	
+	// Delete entire session directory
+	err := os.RemoveAll(sessionDir)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete session: %v", err)})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Session deleted successfully",
+		"session_id": sessionID,
+	})
+}
+
+func (s *Server) extractJobIDFromFilename(filename string, fallbackIndex int) string {
+	// Extract job ID from filename like "moshed_batch_0.avi" -> "batch_0" or "moshed_single_1749018199.avi" -> "single_1749018199"
+	if strings.HasPrefix(filename, "moshed_") && strings.HasSuffix(filename, ".avi") {
+		return strings.TrimSuffix(strings.TrimPrefix(filename, "moshed_"), ".avi")
+	}
+	// Fallback should match current job ID patterns
+	return fmt.Sprintf("unknown_%d", fallbackIndex)
+}
+

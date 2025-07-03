@@ -63,11 +63,11 @@ func (h *WSHub) Run() {
 	}
 }
 
-func (h *WSHub) BroadcastJobUpdate(jobID, status string, progress float64) {
+func (h *WSHub) BroadcastMoshUpdate(moshID, status string, progress float64) {
 	message := WSMessage{
-		Type: "job_update",
+		Type: "mosh_update",
 		Data: map[string]interface{}{
-			"job_id":   jobID,
+			"mosh_id":  moshID,
 			"status":   status,
 			"progress": progress,
 		},
@@ -113,9 +113,9 @@ func (s *Server) handleWSConnection(conn *websocket.Conn) {
 		switch msg.Type {
 		case "ping":
 			conn.WriteJSON(WSMessage{Type: "pong", Data: nil})
-		case "get_jobs":
-			jobs := s.processor.GetAllJobs()
-			conn.WriteJSON(WSMessage{Type: "jobs_update", Data: jobs})
+		case "get_moshes":
+			moshes := s.processor.GetAllMoshes()
+			conn.WriteJSON(WSMessage{Type: "moshes_update", Data: moshes})
 		}
 	}
 }

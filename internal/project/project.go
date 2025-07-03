@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -303,5 +305,100 @@ func (m *Manager) ScanAndRecoverProject(projectID string) error {
 		}
 	}
 
+	err = m.RecoverOrphanedClips(projectID)
+	if err != nil {
+		return err
+	}
+
 	return m.SaveProject(project)
+}
+
+func (m *Manager) RecoverOrphanedClips(projectID string) error {
+	paths := m.GetProjectPaths(projectID)
+	clipsDir := paths["clips"]
+	
+	if _, err := os.Stat(clipsDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	existingClips, err := m.LoadClips(projectID)
+	if err != nil {
+		existingClips = []ClipMetadata{}
+	}
+
+	existingFiles := make(map[string]bool)
+	for _, clip := range existingClips {
+		existingFiles[clip.Name] = true
+	}
+
+	entries, err := os.ReadDir(clipsDir)
+	if err != nil {
+		return err
+	}
+
+	var newClips []ClipMetadata
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".avi" && entry.Name() != "clips.json" {
+			if !existingFiles[entry.Name()] {
+				filePath := filepath.Join(clipsDir, entry.Name())
+				
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+
+				name := entry.Name()
+				var startFrame, endFrame int
+				if parsed := parseClipFilename(name); parsed != nil {
+					startFrame = parsed.StartFrame
+					endFrame = parsed.EndFrame
+				}
+
+				clip := ClipMetadata{
+					ID:         fmt.Sprintf("recovered_%d", time.Now().UnixNano()),
+					Name:       name,
+					StartFrame: startFrame,
+					EndFrame:   endFrame,
+					StartTime:  float64(startFrame) / 30.0, 
+					EndTime:    float64(endFrame) / 30.0,
+					Duration:   float64(endFrame-startFrame) / 30.0,
+					FilePath:   filePath,
+					CreatedAt:  info.ModTime(),
+				}
+				newClips = append(newClips, clip)
+			}
+		}
+	}
+
+	if len(newClips) > 0 {
+		allClips := append(existingClips, newClips...)
+		return m.SaveClips(projectID, allClips)
+	}
+
+	return nil
+}
+
+type ClipFilename struct {
+	StartFrame int
+	EndFrame   int
+}
+
+func parseClipFilename(filename string) *ClipFilename {
+	name := strings.TrimSuffix(filename, ".avi")
+	
+	if strings.HasPrefix(name, "clip_") {
+		parts := strings.Split(name[5:], "_")
+		if len(parts) >= 2 {
+			startFrame, err1 := strconv.Atoi(parts[0])
+			endFrame, err2 := strconv.Atoi(parts[1])
+			if err1 == nil && err2 == nil {
+				return &ClipFilename{
+					StartFrame: startFrame,
+					EndFrame:   endFrame,
+				}
+			}
+		}
+	}
+	
+	return &ClipFilename{StartFrame: 0, EndFrame: 0}
 }

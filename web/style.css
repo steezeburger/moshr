@@ -346,7 +346,7 @@ button:hover {
     color: #000000;
 }
 
-.job-item {
+.mosh-item {
     background: #ffffff;
     border: 1px solid #000000;
     padding: 15px;
@@ -354,12 +354,12 @@ button:hover {
     border-left: 3px solid #000000;
 }
 
-.job-item h4 {
+.mosh-item h4 {
     margin-bottom: 10px;
     color: #000000;
 }
 
-.job-progress {
+.mosh-progress {
     background: #ffffff;
     border: 1px solid #000000;
     height: 8px;
@@ -367,7 +367,7 @@ button:hover {
     margin: 10px 0;
 }
 
-.job-progress-bar {
+.mosh-progress-bar {
     height: 100%;
     background: #000000;
 }
@@ -620,11 +620,60 @@ button:hover {
     color: #000000;
 }
 
+.clip-thumbnails {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.clip-thumbnail {
+    width: 80px;
+    height: 45px;
+    object-fit: cover;
+    border: 1px solid #000000;
+    display: block;
+}
+
 .mosh-history {
     background: #f0f0f0;
     padding: 20px;
     border: 1px solid #000000;
     border-left: 3px solid #000000;
+}
+
+.session-source {
+    margin-bottom: 15px;
+    font-size: 14px;
+    padding: 8px;
+    background: #ffffff;
+    border: 1px solid #000000;
+}
+
+.source-indicator {
+    font-weight: bold;
+}
+
+.clip-source {
+    color: #0066cc;
+}
+
+.full-source {
+    color: #666666;
+}
+
+.session-clip-thumbnails {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+    align-items: center;
+}
+
+.session-thumbnail {
+    width: 60px;
+    height: 34px;
+    object-fit: cover;
+    border: 1px solid #000000;
+    display: block;
 }
 
 .history-container {
@@ -737,4 +786,86 @@ button:hover {
         flex-direction: column;
         gap: 5px;
     }
+}
+
+
+.convert-btn.converted {
+    background: #4CAF50;
+    color: white;
+}
+
+.convert-btn.converted:hover {
+    background: #45a049;
+}
+
+.delete-btn {
+    background: #f44336;
+    color: white;
+    border: none;
+    padding: 5px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 5px;
+}
+
+.delete-btn:hover {
+    background: #d32f2f;
+}
+
+.delete-btn.small {
+    padding: 3px 6px;
+    font-size: 10px;
+}
+
+.delete-session-btn {
+    background: #f44336;
+    color: white;
+    border: none;
+    padding: 4px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    margin-left: 10px;
+}
+
+.delete-session-btn:hover {
+    background: #d32f2f;
+}
+
+.history-group h4 {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Local conversion progress bars */
+.conversion-progress {
+    margin: 10px 0;
+    padding: 8px;
+    background: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.progress-label {
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: #000000;
+    text-align: center;
+}
+
+.progress-bar-container {
+    background: #ffffff;
+    border: 1px solid #000000;
+    height: 16px;
+    overflow: hidden;
+    border-radius: 2px;
+}
+
+.conversion-progress .progress-bar {
+    height: 100%;
+    background: #4CAF50;
+    width: 0%;
+    transition: width 0.3s ease;
 }
