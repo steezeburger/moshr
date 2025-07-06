@@ -11,24 +11,24 @@ import (
 )
 
 type Project struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	OriginalFile string   `json:"original_file"`
-	ConvertedFile string  `json:"converted_file"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	BasePath    string    `json:"base_path"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	OriginalFile  string    `json:"original_file"`
+	ConvertedFile string    `json:"converted_file"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+	BasePath      string    `json:"base_path"`
 }
 
 type ClipMetadata struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	StartFrame int     `json:"start_frame"`
-	EndFrame   int     `json:"end_frame"`
-	StartTime  float64 `json:"start_time"`
-	EndTime    float64 `json:"end_time"`
-	Duration   float64 `json:"duration"`
-	FilePath   string  `json:"file_path"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	StartFrame int       `json:"start_frame"`
+	EndFrame   int       `json:"end_frame"`
+	StartTime  float64   `json:"start_time"`
+	EndTime    float64   `json:"end_time"`
+	Duration   float64   `json:"duration"`
+	FilePath   string    `json:"file_path"`
 	CreatedAt  time.Time `json:"created_at"`
 }
 
@@ -41,11 +41,11 @@ type MoshSession struct {
 }
 
 type MoshMetadata struct {
-	ID       string            `json:"id"`
-	Effect   string            `json:"effect"`
-	FilePath string            `json:"file_path"`
-	Params   map[string]interface{} `json:"params"`
-	CreatedAt time.Time        `json:"created_at"`
+	ID        string                 `json:"id"`
+	Effect    string                 `json:"effect"`
+	FilePath  string                 `json:"file_path"`
+	Params    map[string]interface{} `json:"params"`
+	CreatedAt time.Time              `json:"created_at"`
 }
 
 type Manager struct {
@@ -55,7 +55,7 @@ type Manager struct {
 func NewManager() *Manager {
 	projectsDir := "projects"
 	os.MkdirAll(projectsDir, 0755)
-	
+
 	return &Manager{
 		projectsDir: projectsDir,
 	}
@@ -66,10 +66,10 @@ func (m *Manager) CreateProject(originalFileName string) (*Project, error) {
 	baseName := filepath.Base(originalFileName)
 	ext := filepath.Ext(baseName)
 	nameWithoutExt := baseName[:len(baseName)-len(ext)]
-	
+
 	projectID := fmt.Sprintf("%s_%s", nameWithoutExt, timestamp)
 	projectPath := filepath.Join(m.projectsDir, projectID)
-	
+
 	err := os.MkdirAll(projectPath, 0755)
 	if err != nil {
 		return nil, err
@@ -84,13 +84,13 @@ func (m *Manager) CreateProject(originalFileName string) (*Project, error) {
 	}
 
 	project := &Project{
-		ID:          projectID,
-		Name:        nameWithoutExt,
-		OriginalFile: "",
+		ID:            projectID,
+		Name:          nameWithoutExt,
+		OriginalFile:  "",
 		ConvertedFile: "",
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
-		BasePath:    projectPath,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+		BasePath:      projectPath,
 	}
 
 	err = m.SaveProject(project)
@@ -103,7 +103,7 @@ func (m *Manager) CreateProject(originalFileName string) (*Project, error) {
 
 func (m *Manager) SaveProject(project *Project) error {
 	project.UpdatedAt = time.Now()
-	
+
 	projectFile := filepath.Join(project.BasePath, "project.json")
 	data, err := json.MarshalIndent(project, "", "  ")
 	if err != nil {
@@ -163,7 +163,7 @@ func (m *Manager) SaveClips(projectID string, clips []ClipMetadata) error {
 
 func (m *Manager) LoadClips(projectID string) ([]ClipMetadata, error) {
 	clipsFile := filepath.Join(m.projectsDir, projectID, "clips", "clips.json")
-	
+
 	if _, err := os.Stat(clipsFile); os.IsNotExist(err) {
 		return []ClipMetadata{}, nil
 	}
@@ -200,7 +200,7 @@ func (m *Manager) SaveMoshSession(projectID string, session MoshSession) error {
 
 func (m *Manager) LoadMoshSessions(projectID string) ([]MoshSession, error) {
 	moshesDir := filepath.Join(m.projectsDir, projectID, "moshes")
-	
+
 	if _, err := os.Stat(moshesDir); os.IsNotExist(err) {
 		return []MoshSession{}, nil
 	}
@@ -238,7 +238,7 @@ func (m *Manager) SaveScenes(projectID string, scenes interface{}) error {
 
 func (m *Manager) LoadScenes(projectID string) (interface{}, error) {
 	scenesFile := filepath.Join(m.projectsDir, projectID, "scenes.json")
-	
+
 	if _, err := os.Stat(scenesFile); os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -274,7 +274,7 @@ func (m *Manager) ScanAndRecoverProject(projectID string) error {
 	}
 
 	paths := m.GetProjectPaths(projectID)
-	
+
 	if project.OriginalFile == "" {
 		entries, err := os.ReadDir(paths["base"])
 		if err == nil {
@@ -316,7 +316,7 @@ func (m *Manager) ScanAndRecoverProject(projectID string) error {
 func (m *Manager) RecoverOrphanedClips(projectID string) error {
 	paths := m.GetProjectPaths(projectID)
 	clipsDir := paths["clips"]
-	
+
 	if _, err := os.Stat(clipsDir); os.IsNotExist(err) {
 		return nil
 	}
@@ -341,7 +341,7 @@ func (m *Manager) RecoverOrphanedClips(projectID string) error {
 		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".avi" && entry.Name() != "clips.json" {
 			if !existingFiles[entry.Name()] {
 				filePath := filepath.Join(clipsDir, entry.Name())
-				
+
 				info, err := entry.Info()
 				if err != nil {
 					continue
@@ -359,7 +359,7 @@ func (m *Manager) RecoverOrphanedClips(projectID string) error {
 					Name:       name,
 					StartFrame: startFrame,
 					EndFrame:   endFrame,
-					StartTime:  float64(startFrame) / 30.0, 
+					StartTime:  float64(startFrame) / 30.0,
 					EndTime:    float64(endFrame) / 30.0,
 					Duration:   float64(endFrame-startFrame) / 30.0,
 					FilePath:   filePath,
@@ -385,7 +385,7 @@ type ClipFilename struct {
 
 func parseClipFilename(filename string) *ClipFilename {
 	name := strings.TrimSuffix(filename, ".avi")
-	
+
 	if strings.HasPrefix(name, "clip_") {
 		parts := strings.Split(name[5:], "_")
 		if len(parts) >= 2 {
@@ -399,6 +399,6 @@ func parseClipFilename(filename string) *ClipFilename {
 			}
 		}
 	}
-	
+
 	return &ClipFilename{StartFrame: 0, EndFrame: 0}
 }

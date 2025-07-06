@@ -7,14 +7,14 @@ import (
 )
 
 type VideoInfo struct {
-	Duration    float64 `json:"duration"`
-	Width       int     `json:"width"`
-	Height      int     `json:"height"`
-	Bitrate     int     `json:"bitrate"`
-	Framerate   float64 `json:"framerate"`
-	Format      string  `json:"format"`
-	VideoCodec  string  `json:"video_codec"`
-	AudioCodec  string  `json:"audio_codec"`
+	Duration   float64 `json:"duration"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	Bitrate    int     `json:"bitrate"`
+	Framerate  float64 `json:"framerate"`
+	Format     string  `json:"format"`
+	VideoCodec string  `json:"video_codec"`
+	AudioCodec string  `json:"audio_codec"`
 }
 
 type FFProbeFormat struct {
@@ -23,10 +23,10 @@ type FFProbeFormat struct {
 }
 
 type FFProbeStream struct {
-	CodecType string `json:"codec_type"`
-	CodecName string `json:"codec_name"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
+	CodecType  string `json:"codec_type"`
+	CodecName  string `json:"codec_name"`
+	Width      int    `json:"width"`
+	Height     int    `json:"height"`
 	RFrameRate string `json:"r_frame_rate"`
 }
 
@@ -60,7 +60,7 @@ func parseVideoInfo(jsonOutput string) (*VideoInfo, error) {
 			info.Width = stream.Width
 			info.Height = stream.Height
 			info.VideoCodec = stream.CodecName
-			
+
 			if stream.RFrameRate != "" {
 				info.Framerate = parseFramerate(stream.RFrameRate)
 			}
@@ -77,14 +77,14 @@ func parseFramerate(rFrameRate string) float64 {
 	if len(parts) != 2 {
 		return 0
 	}
-	
+
 	num, err1 := strconv.ParseFloat(parts[0], 64)
 	den, err2 := strconv.ParseFloat(parts[1], 64)
-	
+
 	if err1 != nil || err2 != nil || den == 0 {
 		return 0
 	}
-	
+
 	return num / den
 }
 

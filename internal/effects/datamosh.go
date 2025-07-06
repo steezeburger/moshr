@@ -30,7 +30,7 @@ func (d *DatamoshEffect) generateParams(intensity float64) video.MoshParams {
 
 	if intensity > 0.1 {
 		params.PFrameDuplication = true
-		params.DuplicationCount = int(intensity * 25) + 5
+		params.DuplicationCount = int(intensity*25) + 5
 	}
 
 	return params

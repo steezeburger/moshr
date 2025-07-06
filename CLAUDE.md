@@ -42,11 +42,17 @@ just deps
 # Clean build artifacts and temp files
 just clean
 
+# Development server with live reload (requires air)
+just dev
+
 # Format code
 just fmt
 
 # Run tests
 just test
+
+# Lint code (requires golangci-lint)
+just lint
 
 # Build for all platforms
 just build-all
@@ -120,6 +126,7 @@ projects/
 │   │   ├── session_timestamp/
 │   │   │   ├── moshed_jobid.avi
 │   │   │   ├── moshed_jobid_converted.mp4
+│   │   │   ├── moshed_jobid_converted.webm
 │   │   │   ├── preview_jobid.jpg
 │   │   │   └── session.json
 │   └── timeline/
@@ -143,6 +150,22 @@ projects/
 - **Conversion Recommended**: Use MP4/WebM conversion for sharing and compatibility
 - **No Testing Framework**: Currently no automated tests implemented
 - **Binary Location**: Built to `bin/` directory and gitignored
+
+## Known Issues
+
+Current UI/UX issues that need addressing:
+- **Batch Generation UI**: Incorrect rendering - shows decreasing count instead of stable count
+- **Refresh Required**: Must refresh page after MP4/WebM generation to show convert buttons
+- **Session Management**: Must refresh after session deletion to update session list
+- **Scene Detection**: Scene detection function is not working
+- **Keyframes Feature**: Show keyframes feature purpose is unclear
+
+## Future Enhancements
+
+Features identified for future development:
+- **Mosh Stitching**: Ability to combine multiple moshes into one sequence
+- **Video Masks**: Apply masking to specific areas of video during moshing
+- **UI Improvements**: Fix refresh requirements and batch generation display
 
 ## Troubleshooting
 

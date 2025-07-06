@@ -41,10 +41,10 @@ func (g *GlitchEffect) generateRandomParams(intensity float64) video.MoshParams 
 
 func (g *GlitchEffect) CreateRandomVariations(count int, intensity float64) []video.MoshParams {
 	var variations []video.MoshParams
-	
+
 	for i := 0; i < count; i++ {
 		variations = append(variations, g.generateRandomParams(intensity))
 	}
-	
+
 	return variations
 }

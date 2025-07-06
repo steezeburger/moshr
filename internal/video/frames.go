@@ -18,9 +18,9 @@ type FrameRange struct {
 }
 
 type FrameInfo struct {
-	FrameNumber int     `json:"frame_number"`
-	Timestamp   float64 `json:"timestamp"`
-	ThumbnailPath string `json:"thumbnail_path"`
+	FrameNumber   int     `json:"frame_number"`
+	Timestamp     float64 `json:"timestamp"`
+	ThumbnailPath string  `json:"thumbnail_path"`
 }
 
 func NewFrameExtractor() *FrameExtractor {
@@ -178,7 +178,7 @@ func (fe *FrameExtractor) CreatePreviewMontage(inputPath, outputPath string, col
 	for i := 0; i < totalFrames; i++ {
 		timestamp := float64(i) * interval
 		framePath := filepath.Join(tempDir, fmt.Sprintf("frame_%03d.jpg", i))
-		
+
 		err := fe.extractFrame(inputPath, framePath, timestamp)
 		if err == nil {
 			inputPaths = append(inputPaths, framePath)
@@ -187,7 +187,7 @@ func (fe *FrameExtractor) CreatePreviewMontage(inputPath, outputPath string, col
 
 	args := []string{"-i", inputPath}
 	filterComplex := fmt.Sprintf("tile=%dx%d", cols, rows)
-	
+
 	for i, path := range inputPaths {
 		args = append(args, "-i", path)
 		if i > 0 {
@@ -196,14 +196,14 @@ func (fe *FrameExtractor) CreatePreviewMontage(inputPath, outputPath string, col
 	}
 
 	args = append(args, "-filter_complex", filterComplex, "-q:v", "3", outputPath, "-y")
-	
+
 	cmd := exec.Command("ffmpeg", args...)
 	return cmd.Run()
 }
 
 func (fe *FrameExtractor) GetFrameAtTime(inputPath string, timestamp float64) (string, error) {
 	tempPath := fmt.Sprintf("temp_frame_%.3f.jpg", timestamp)
-	
+
 	err := fe.extractFrame(inputPath, tempPath, timestamp)
 	if err != nil {
 		return "", err

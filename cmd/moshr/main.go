@@ -11,7 +11,7 @@ import (
 
 func main() {
 	var (
-		port = flag.String("port", "8080", "server port")
+		port    = flag.String("port", "8080", "server port")
 		webMode = flag.Bool("web", false, "run in web mode")
 	)
 	flag.Parse()

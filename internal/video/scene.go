@@ -9,10 +9,10 @@ import (
 )
 
 type Scene struct {
-	StartTime float64 `json:"start_time"`
-	EndTime   float64 `json:"end_time"`
-	StartFrame int    `json:"start_frame"`
-	EndFrame   int    `json:"end_frame"`
+	StartTime  float64 `json:"start_time"`
+	EndTime    float64 `json:"end_time"`
+	StartFrame int     `json:"start_frame"`
+	EndFrame   int     `json:"end_frame"`
 	Duration   float64 `json:"duration"`
 	Type       string  `json:"type"`
 }
@@ -28,11 +28,11 @@ func (sd *SceneDetector) DetectScenes(inputPath string, threshold float64) ([]Sc
 		threshold = 0.3
 	}
 
-	cmd := exec.Command("ffprobe", 
-		"-f", "lavfi", 
+	cmd := exec.Command("ffprobe",
+		"-f", "lavfi",
 		"-i", fmt.Sprintf("movie=%s,select=gt(scene\\,%f)", inputPath, threshold),
-		"-show_entries", "packet=pts_time", 
-		"-of", "csv=p=0", 
+		"-show_entries", "packet=pts_time",
+		"-of", "csv=p=0",
 		"-v", "quiet")
 
 	output, err := cmd.Output()
@@ -46,7 +46,7 @@ func (sd *SceneDetector) DetectScenes(inputPath string, threshold float64) ([]Sc
 func (sd *SceneDetector) parseSceneOutput(output, inputPath string) ([]Scene, error) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 	var scenes []Scene
-	
+
 	analyzer := NewAnalyzer()
 	info, err := analyzer.AnalyzeVideo(inputPath)
 	if err != nil {
@@ -60,7 +60,7 @@ func (sd *SceneDetector) parseSceneOutput(output, inputPath string) ([]Scene, er
 		if line == "" {
 			continue
 		}
-		
+
 		time, err := strconv.ParseFloat(strings.TrimSpace(line), 64)
 		if err != nil {
 			continue
@@ -73,7 +73,7 @@ func (sd *SceneDetector) parseSceneOutput(output, inputPath string) ([]Scene, er
 				StartFrame: int(lastTime * info.Framerate),
 				EndFrame:   int(time * info.Framerate),
 				Duration:   time - lastTime,
-				Type:      fmt.Sprintf("scene_%d", sceneIndex),
+				Type:       fmt.Sprintf("scene_%d", sceneIndex),
 			}
 			scenes = append(scenes, scene)
 		}
@@ -89,7 +89,7 @@ func (sd *SceneDetector) parseSceneOutput(output, inputPath string) ([]Scene, er
 			StartFrame: int(lastTime * info.Framerate),
 			EndFrame:   int(info.Duration * info.Framerate),
 			Duration:   info.Duration - lastTime,
-			Type:      fmt.Sprintf("scene_%d", sceneIndex),
+			Type:       fmt.Sprintf("scene_%d", sceneIndex),
 		}
 		scenes = append(scenes, scene)
 	}
@@ -98,10 +98,10 @@ func (sd *SceneDetector) parseSceneOutput(output, inputPath string) ([]Scene, er
 }
 
 func (sd *SceneDetector) DetectScenesAdvanced(inputPath string) ([]Scene, error) {
-	cmd := exec.Command("ffprobe", 
+	cmd := exec.Command("ffprobe",
 		"-i", inputPath,
 		"-filter:v", "select='gt(scene,0.4)',showinfo",
-		"-f", "null", 
+		"-f", "null",
 		"-",
 		"-v", "info")
 
@@ -129,8 +129,8 @@ func (sd *SceneDetector) ClassifyScenes(inputPath string, scenes []Scene) ([]Sce
 
 func (sd *SceneDetector) classifyScene(inputPath string, scene Scene) (string, error) {
 	thumbnailPath := filepath.Join("temp", fmt.Sprintf("scene_thumb_%d.jpg", scene.StartFrame))
-	
-	cmd := exec.Command("ffmpeg", 
+
+	cmd := exec.Command("ffmpeg",
 		"-i", inputPath,
 		"-ss", fmt.Sprintf("%.2f", scene.StartTime),
 		"-frames:v", "1",
@@ -160,7 +160,7 @@ func (sd *SceneDetector) classifyScene(inputPath string, scene Scene) (string, e
 }
 
 func (sd *SceneDetector) analyzeBrightness(imagePath string) float64 {
-	cmd := exec.Command("ffprobe", 
+	cmd := exec.Command("ffprobe",
 		"-f", "lavfi",
 		"-i", fmt.Sprintf("movie=%s,signalstats", imagePath),
 		"-show_entries", "frame=pkt_pts_time:frame_tags=lavfi.signalstats.YAVG",

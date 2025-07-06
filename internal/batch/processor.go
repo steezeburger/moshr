@@ -13,15 +13,15 @@ import (
 )
 
 type Mosh struct {
-	ID             string                 `json:"id"`
-	InputPath      string                 `json:"input_path"`
-	OutputDir      string                 `json:"output_dir"`
-	Effect         string                 `json:"effect"`
-	Params         video.MoshParams       `json:"params"`
-	Status         string                 `json:"status"`
-	Progress       float64                `json:"progress"`
-	Error          string                 `json:"error,omitempty"`
-	ConvertedFiles map[string]bool        `json:"converted_files,omitempty"`
+	ID             string           `json:"id"`
+	InputPath      string           `json:"input_path"`
+	OutputDir      string           `json:"output_dir"`
+	Effect         string           `json:"effect"`
+	Params         video.MoshParams `json:"params"`
+	Status         string           `json:"status"`
+	Progress       float64          `json:"progress"`
+	Error          string           `json:"error,omitempty"`
+	ConvertedFiles map[string]bool  `json:"converted_files,omitempty"`
 }
 
 type WSHubInterface interface {
@@ -62,7 +62,7 @@ func (bp *BatchProcessor) AddMosh(mosh *Mosh) {
 	mosh.Status = "queued"
 	bp.moshes[mosh.ID] = mosh
 	bp.moshesMu.Unlock()
-	
+
 	bp.queue <- mosh
 }
 
@@ -76,7 +76,7 @@ func (bp *BatchProcessor) GetMosh(id string) (*Mosh, bool) {
 func (bp *BatchProcessor) GetAllMoshes() []*Mosh {
 	bp.moshesMu.RLock()
 	defer bp.moshesMu.RUnlock()
-	
+
 	moshes := make([]*Mosh, 0, len(bp.moshes))
 	for _, mosh := range bp.moshes {
 		moshes = append(moshes, mosh)
@@ -148,7 +148,7 @@ func (bp *BatchProcessor) processMosh(mosh *Mosh) {
 	} else {
 		fmt.Printf("Mosh %s completed successfully, generating preview\n", mosh.ID)
 		bp.updateMosh(mosh.ID, "processing", 0.9, "Generating preview")
-		
+
 		// Generate preview in the same directory as the mosh file
 		previewPath := filepath.Join(mosh.OutputDir, fmt.Sprintf("preview_%s.jpg", mosh.ID))
 		if bp.converter != nil {
@@ -159,9 +159,9 @@ func (bp *BatchProcessor) processMosh(mosh *Mosh) {
 				fmt.Printf("Preview generated for mosh %s at %s\n", mosh.ID, previewPath)
 			}
 		}
-		
+
 		bp.updateMosh(mosh.ID, "completed", 1.0, "")
-		
+
 		// Update session metadata with the correct effect
 		bp.updateSessionMetadata(mosh)
 	}
@@ -170,12 +170,12 @@ func (bp *BatchProcessor) processMosh(mosh *Mosh) {
 func (bp *BatchProcessor) updateMosh(id, status string, progress float64, errorMsg string) {
 	bp.moshesMu.Lock()
 	defer bp.moshesMu.Unlock()
-	
+
 	if mosh, exists := bp.moshes[id]; exists {
 		mosh.Status = status
 		mosh.Progress = progress
 		mosh.Error = errorMsg
-		
+
 		// Broadcast update via WebSocket if hub is available
 		if bp.wsHub != nil {
 			bp.wsHub.BroadcastMoshUpdate(id, status, progress)
@@ -186,10 +186,10 @@ func (bp *BatchProcessor) updateMosh(id, status string, progress float64, errorM
 func (bp *BatchProcessor) monitorFileSize(moshID, outputPath string, done chan bool) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	
+
 	startTime := time.Now()
 	lastSize := int64(0)
-	
+
 	for {
 		select {
 		case <-done:
@@ -199,10 +199,10 @@ func (bp *BatchProcessor) monitorFileSize(moshID, outputPath string, done chan b
 			if err != nil {
 				continue
 			}
-			
+
 			currentSize := stat.Size()
 			elapsed := time.Since(startTime).Seconds()
-			
+
 			// Calculate progress based on file size growth
 			var progress float64
 			if currentSize > lastSize {
@@ -217,16 +217,16 @@ func (bp *BatchProcessor) monitorFileSize(moshID, outputPath string, done chan b
 				}
 			} else if elapsed > 5 {
 				// If no size change after 5 seconds, show some progress anyway
-				progress = 0.3 + (elapsed / 60.0) * 0.4 // Slow progress over 60 seconds
+				progress = 0.3 + (elapsed/60.0)*0.4 // Slow progress over 60 seconds
 				if progress > 0.7 {
 					progress = 0.7
 				}
 			}
-			
+
 			if progress > 0.1 {
 				bp.updateMosh(moshID, "processing", progress, fmt.Sprintf("Processing... (%.1f MB)", float64(currentSize)/1024/1024))
 			}
-			
+
 			lastSize = currentSize
 		}
 	}
@@ -234,7 +234,7 @@ func (bp *BatchProcessor) monitorFileSize(moshID, outputPath string, done chan b
 
 func (bp *BatchProcessor) CreateBatchFromPresets(inputPath, outputDir, effect string, presets []video.MoshParams) []string {
 	var moshIDs []string
-	
+
 	for i, params := range presets {
 		moshID := fmt.Sprintf("batch_%d", i)
 		mosh := &Mosh{
@@ -244,11 +244,11 @@ func (bp *BatchProcessor) CreateBatchFromPresets(inputPath, outputDir, effect st
 			Effect:    effect,
 			Params:    params,
 		}
-		
+
 		bp.AddMosh(mosh)
 		moshIDs = append(moshIDs, moshID)
 	}
-	
+
 	return moshIDs
 }
 
@@ -256,12 +256,12 @@ func (bp *BatchProcessor) updateSessionMetadata(mosh *Mosh) {
 	// Extract session ID from output directory
 	sessionDir := mosh.OutputDir
 	sessionFile := filepath.Join(sessionDir, "session.json")
-	
+
 	fmt.Printf("Updating session metadata for mosh %s with effect %s\n", mosh.ID, mosh.Effect)
-	
+
 	// Read existing session.json or create new one
 	var session map[string]interface{}
-	
+
 	if data, err := os.ReadFile(sessionFile); err == nil {
 		json.Unmarshal(data, &session)
 	} else {
@@ -269,16 +269,16 @@ func (bp *BatchProcessor) updateSessionMetadata(mosh *Mosh) {
 		sessionID := filepath.Base(sessionDir)
 		session = map[string]interface{}{
 			"id":         sessionID,
-			"name":       fmt.Sprintf("Session: %s", sessionID), 
+			"name":       fmt.Sprintf("Session: %s", sessionID),
 			"created_at": time.Now(),
 			"source":     fmt.Sprintf("Created with %s effect", mosh.Effect),
 			"moshes":     []interface{}{},
 		}
 	}
-	
+
 	// Add or update this mosh's metadata
 	moshes, _ := session["moshes"].([]interface{})
-	
+
 	// Check if this mosh already exists in moshes
 	found := false
 	for i, moshInterface := range moshes {
@@ -293,13 +293,13 @@ func (bp *BatchProcessor) updateSessionMetadata(mosh *Mosh) {
 			}
 		}
 	}
-	
+
 	if !found {
 		// Add new mosh metadata
 		newMosh := map[string]interface{}{
-			"id":         mosh.ID,
-			"effect":     mosh.Effect, // THE CORRECT FUCKING EFFECT
-			"file_path":  filepath.Join(sessionDir, fmt.Sprintf("moshed_%s.avi", mosh.ID)),
+			"id":        mosh.ID,
+			"effect":    mosh.Effect, // THE CORRECT FUCKING EFFECT
+			"file_path": filepath.Join(sessionDir, fmt.Sprintf("moshed_%s.avi", mosh.ID)),
 			"params": map[string]interface{}{
 				"intensity": mosh.Params.Intensity,
 			},
@@ -307,9 +307,9 @@ func (bp *BatchProcessor) updateSessionMetadata(mosh *Mosh) {
 		}
 		moshes = append(moshes, newMosh)
 	}
-	
+
 	session["moshes"] = moshes
-	
+
 	// Save updated session.json
 	if data, err := json.MarshalIndent(session, "", "  "); err == nil {
 		os.WriteFile(sessionFile, data, 0644)
