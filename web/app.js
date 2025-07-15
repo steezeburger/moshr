@@ -656,10 +656,10 @@ class MoshrApp {
 
     async monitorJobs(jobIds) {
         // Clear previous session jobs
-        this.jobsMap.clear();
+        this.moshesMap.clear();
         
         for (const jobId of jobIds) {
-            this.jobsMap.set(jobId, { status: 'queued', progress: 0 });
+            this.moshesMap.set(jobId, { status: 'queued', progress: 0 });
         }
         this.updateMoshesDisplay();
     }
@@ -738,6 +738,75 @@ class MoshrApp {
             }
         } else {
             console.log('Mosh not found in map for moshId:', moshId);
+            
+            // Handle conversion progress updates that might not be in the map yet
+            if (moshId.startsWith('convert_')) {
+                console.log('Handling conversion progress update for:', moshId);
+                
+                // New format: convert_moshed_MOSHID.avi_FORMAT_TIMESTAMP
+                const match = moshId.match(/convert_moshed_(.+?)\.avi_(.+?)_(\d+)/);
+                if (match) {
+                    const actualMoshId = match[1];
+                    const format = match[2];
+                    console.log('NEW FORMAT - Extracted mosh ID:', actualMoshId, 'format:', format);
+                    
+                    // Create a temporary mosh entry for this conversion
+                    this.moshesMap.set(moshId, {
+                        status: status,
+                        progress: progress,
+                        isConversion: true,
+                        format: format,
+                        moshId: actualMoshId
+                    });
+                    
+                    // Update the progress display
+                    if (status === 'processing') {
+                        this.showLocalProgress(actualMoshId, `Converting to ${format.toUpperCase()}... (${Math.round(progress * 100)}%)`, progress * 100);
+                    } else if (status === 'completed') {
+                        this.showLocalProgress(actualMoshId, `Conversion to ${format.toUpperCase()} completed`, 100);
+                        this.showConvertedFile(moshId, format);
+                        // Also reload the project to refresh button states
+                        setTimeout(() => this.reloadCurrentProject(), 1000);
+                    } else if (status === 'failed') {
+                        this.showLocalProgress(actualMoshId, `Conversion to ${format.toUpperCase()} failed`, 0);
+                    }
+                } else {
+                    // Fallback for old format: convert_moshed_MOSHID.avi_TIMESTAMP
+                    const oldMatch = moshId.match(/convert_moshed_(.+?)\.avi_(\d+)/);
+                    if (oldMatch) {
+                        const actualMoshId = oldMatch[1];
+                        // Try to detect format from the conversion ID string
+                        let format = 'mp4'; // default
+                        
+                        // Check multiple ways to detect WebM
+                        if (moshId.includes('webm') || 
+                            moshId.includes('_webm_') || 
+                            moshId.toLowerCase().includes('webm')) {
+                            format = 'webm';
+                        }
+                        
+                        console.log('FALLBACK FORMAT - Using format detection for mosh ID:', actualMoshId, 'format:', format, 'full ID:', moshId);
+                        
+                        this.moshesMap.set(moshId, {
+                            status: status,
+                            progress: progress,
+                            isConversion: true,
+                            format: format,
+                            moshId: actualMoshId
+                        });
+                        
+                        if (status === 'processing') {
+                            this.showLocalProgress(actualMoshId, `Converting to ${format.toUpperCase()}... (${Math.round(progress * 100)}%)`, progress * 100);
+                        } else if (status === 'completed') {
+                            this.showLocalProgress(actualMoshId, `Conversion to ${format.toUpperCase()} completed`, 100);
+                            this.showConvertedFile(moshId, format);
+                            setTimeout(() => this.reloadCurrentProject(), 1000);
+                        } else if (status === 'failed') {
+                            this.showLocalProgress(actualMoshId, `Conversion to ${format.toUpperCase()} failed`, 0);
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1209,8 +1278,8 @@ class MoshrApp {
             // Extract mosh ID from filename (moshed_moshId.avi -> moshId)
             const moshId = filename.replace('moshed_', '').replace('.avi', '');
             
-            // Show local progress bar
-            this.showLocalProgress(moshId, `Starting ${format.toUpperCase()} conversion...`, 10);
+            // Show local progress bar immediately
+            this.showLocalProgress(moshId, `Starting ${format.toUpperCase()} conversion...`, 5);
 
             const response = await fetch(`/api/projects/${this.currentProjectData.id}/convert-mosh/${filename}`, {
                 method: 'POST',
@@ -1227,10 +1296,17 @@ class MoshrApp {
             }
 
             const result = await response.json();
+            console.log('Conversion started:', result);
             
             // Track conversion progress via WebSocket
             if (result.conversion_id) {
+                console.log('Tracking conversion with ID:', result.conversion_id);
                 this.trackConversionProgress(result.conversion_id, format, moshId);
+                // Update progress to show conversion has started
+                this.showLocalProgress(moshId, `Converting to ${format.toUpperCase()}...`, 10);
+            } else {
+                console.log('No conversion ID returned');
+                this.showLocalProgress(moshId, `Conversion completed`, 100);
             }
 
         } catch (error) {
@@ -1308,11 +1384,21 @@ class MoshrApp {
     }
     
     showConvertedFile(conversionId, format) {
-        // Extract mosh ID from conversion ID (format: convert_moshed_moshid.avi_timestamp)
-        const match = conversionId.match(/convert_moshed_(.+?)\.avi_/);
-        if (!match) return;
+        // Extract mosh ID from conversion ID 
+        // New format: convert_moshed_MOSHID.avi_FORMAT_TIMESTAMP
+        let match = conversionId.match(/convert_moshed_(.+?)\.avi_(.+?)_(\d+)/);
+        let moshId;
         
-        const moshId = match[1];
+        if (match) {
+            moshId = match[1];
+        } else {
+            // Fallback for old format: convert_moshed_MOSHID.avi_TIMESTAMP
+            match = conversionId.match(/convert_moshed_(.+?)\.avi_/);
+            if (!match) return;
+            moshId = match[1];
+        }
+        
+        console.log('Updating converted file UI for mosh ID:', moshId, 'format:', format);
         
         // Update all convert buttons for this mosh ID and format
         const buttons = [
@@ -1322,6 +1408,7 @@ class MoshrApp {
         
         buttons.forEach(button => {
             if (button) {
+                console.log('Updating button:', button.id);
                 button.classList.add('converted');
                 button.innerHTML = `▶ Play ${format.toUpperCase()}`;
             }

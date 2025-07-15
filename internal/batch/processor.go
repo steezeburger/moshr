@@ -136,6 +136,30 @@ func (bp *BatchProcessor) processMosh(mosh *Mosh) {
 		fmt.Printf("Using scanline displacement effect\n")
 		effect := effects.NewCorruptionEffect()
 		err = effect.ApplyScanlineDisplace(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "duallayer":
+		fmt.Printf("Using dual layer effect\n")
+		effect := effects.NewDualLayerEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "rgbdrift":
+		fmt.Printf("Using RGB drift effect\n")
+		effect := effects.NewRGBDriftEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "echotrail":
+		fmt.Printf("Using echo trail effect\n")
+		effect := effects.NewEchoTrailEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "glitchmosaic":
+		fmt.Printf("Using glitch mosaic effect\n")
+		effect := effects.NewGlitchMosaicEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "chromaticblur":
+		fmt.Printf("Using chromatic blur effect\n")
+		effect := effects.NewChromaticBlurEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
+	case "kaleidoscope":
+		fmt.Printf("Using kaleidoscope effect\n")
+		effect := effects.NewKaleidoscopeEffect()
+		err = effect.Apply(mosh.InputPath, outputPath, mosh.Params.Intensity)
 	default:
 		fmt.Printf("Using default mosher\n")
 		mosher := video.NewMosher()

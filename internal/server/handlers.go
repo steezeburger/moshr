@@ -284,12 +284,32 @@ func (s *Server) handleMosh(c *gin.Context) {
 			presets = effect.CreatePresets()
 		case "glitch":
 			effect := effects.NewGlitchEffect()
-			presets = effect.CreateRandomVariations(3, req.Intensity)
-		default:
+			presets = effect.CreatePresets()
+		case "duallayer":
+			effect := effects.NewDualLayerEffect()
+			dualPresets := effect.CreatePresets()
+			// Convert DualLayerParams to MoshParams for compatibility
+			for _, preset := range dualPresets {
+				presets = append(presets, video.MoshParams{
+					Intensity:         preset.Intensity,
+					IFrameRemoval:     false,
+					PFrameDuplication: false,
+					DuplicationCount:  0,
+				})
+			}
+		case "rgbdrift", "echotrail", "glitchmosaic", "chromaticblur", "kaleidoscope":
+			// These effects use intensity-based presets
 			presets = []video.MoshParams{
-				{Intensity: 0.5, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 15},
-				{Intensity: 0.8, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 25},
-				{Intensity: 1.0, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 40},
+				{Intensity: 1.0, IFrameRemoval: false, PFrameDuplication: false, DuplicationCount: 0},
+				{Intensity: 2.0, IFrameRemoval: false, PFrameDuplication: false, DuplicationCount: 0},
+				{Intensity: 3.0, IFrameRemoval: false, PFrameDuplication: false, DuplicationCount: 0},
+			}
+		default:
+			// Default to datamosh-style presets
+			presets = []video.MoshParams{
+				{Intensity: 0.4, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 44},
+				{Intensity: 0.7, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 62},
+				{Intensity: 1.0, IFrameRemoval: true, PFrameDuplication: true, DuplicationCount: 80},
 			}
 		}
 
@@ -298,17 +318,45 @@ func (s *Server) handleMosh(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"mosh_ids": moshIDs, "session_id": sessionID})
 	} else {
 		moshID := fmt.Sprintf("single_%d", time.Now().Unix())
+		// Generate effect-specific parameters for single mosh
+		var params video.MoshParams
+		switch req.Effect {
+		case "datamosh":
+			effect := effects.NewDatamoshEffect()
+			params = effect.GenerateParams(req.Intensity)
+		case "glitch":
+			effect := effects.NewGlitchEffect()
+			params = effect.GenerateRandomParams(req.Intensity)
+		case "duallayer":
+			params = video.MoshParams{
+				Intensity:         req.Intensity,
+				IFrameRemoval:     false,
+				PFrameDuplication: false,
+				DuplicationCount:  0,
+			}
+		case "rgbdrift", "echotrail", "glitchmosaic", "chromaticblur", "kaleidoscope":
+			params = video.MoshParams{
+				Intensity:         req.Intensity,
+				IFrameRemoval:     false,
+				PFrameDuplication: false,
+				DuplicationCount:  0,
+			}
+		default:
+			// Default datamosh-style parameters
+			params = video.MoshParams{
+				Intensity:         req.Intensity,
+				IFrameRemoval:     req.Intensity > 0.1,
+				PFrameDuplication: req.Intensity > 0.05,
+				DuplicationCount:  int(req.Intensity*60) + 20,
+			}
+		}
+
 		mosh := &batch.Mosh{
 			ID:        moshID,
 			InputPath: req.InputPath,
 			OutputDir: sessionDir,
 			Effect:    req.Effect,
-			Params: video.MoshParams{
-				Intensity:         req.Intensity,
-				IFrameRemoval:     req.Intensity > 0.2,
-				PFrameDuplication: req.Intensity > 0.1,
-				DuplicationCount:  int(req.Intensity*25) + 5,
-			},
+			Params:    params,
 		}
 
 		s.processor.AddMosh(mosh)
@@ -791,7 +839,7 @@ func (s *Server) handleConvertMosh(c *gin.Context) {
 	outputPath := filepath.Join(filepath.Dir(inputPath), outputFilename)
 
 	// Generate conversion ID for WebSocket updates
-	conversionID := fmt.Sprintf("convert_%s_%d", filename, time.Now().Unix())
+	conversionID := fmt.Sprintf("convert_%s_%s_%d", filename, req.Format, time.Now().Unix())
 
 	// Create progress callback for WebSocket updates
 	progressCallback := func(progress float64) {
