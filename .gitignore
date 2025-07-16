@@ -20,3 +20,4 @@ projects/*
 *.jpg
 *.jpeg
 *.png
+!screens/*.png
